@@ -15,7 +15,6 @@ api = tweepy.API(auth)
 
 # ===== CONTENT SOURCES =====
 CELEBS = ["elonmusk", "BarackObama", "BillGates", "Oprah", "taylorswift13"]
-NEWS_API = "YOUR_NEWSAPI_KEY_HERE"
 
 def get_celeb_tweet():
     try:
@@ -27,23 +26,16 @@ def get_celeb_tweet():
         return f"{best_tweet.full_text}\n\n- {celeb} #Trending"
     except:
         return None
-
-def get_news():
-    # Get top business news
-    news = requests.get(f"https://newsapi.org/v2/top-headlines?category=business&apiKey={NEWS_API}").json()
-    print(f"NewsAPI Response: {news}")  # Add before article selection
-    article = random.choice(news['articles'])
-    return f"📰 {article['title']}\n\n{article['url']} #News"
     
 def post_tweet():
-    content = get_celeb_tweet() or get_news() or "🌟 Inspiration coming soon! #AI"
+    content = get_celeb_tweet() or "🌟 Inspiration coming soon! #AI"
     api.update_status(content)
     
     if content:
         api.update_status(content)
         print(f"Posted: {content}")
     else:
-        print("Failed to generate content")
+        print("what is current news to cover")
 
 # ===== RUN =====
 if __name__ == "__main__":
