@@ -62,12 +62,19 @@ def get_celeb_content():
     try:
         celeb = random.choice(GLOBAL_CELEBS)
         # Use read client with bearer token
+        time.sleep(2)  # 2-second delay between API calls
+        
         user = read_client.get_user(username=celeb)
         if user.errors:
             return None
             
         tweets = read_client.get_users_tweets(user.data.id, max_results=5)
-        
+        retries = 0
+        while retries < 3 and (not tweets.data or tweets.errors):
+            time.sleep(5 ** retries)
+            tweets = read_client.get_users_tweets(user.data.id, max_results=5)
+            retries += 1
+            
         tracker.log_read()
         
         valid_tweets = [t for t in tweets.data if not t.text.startswith("RT ")]
@@ -125,18 +132,25 @@ def post_tweet():
         # Ensure compliance
         content = content[:275] + " #AI"  # Add required hashtag
         
-        # Post tweet
-        response = write_client.create_tweet(text=content)
-        tracker.log_write()
-        print(f"✅ Posted at {datetime.now()}: {content[:50]}...")
+       # Post with retries
+        retries = 0
+        while retries < 3:
+            try:
+                response = write_client.create_tweet(text=content)
+                tracker.log_write()
+                print(f"✅ Posted at {datetime.now()}: {content[:50]}...")
+                break
+            except tweepy.TweepyException as e:
+                print(f"🚨 Post Failed: {str(e)}")
+                time.sleep(5 ** retries)
+                retries += 1
         
         # Log usage
         with open("usage.json", "w") as f:
             json.dump(tracker.get_usage(), f)
             
-    except tweepy.TweepyException as e:
-        print(f"🚨 Post Failed: {str(e)}")
-        time.sleep(60)
+    except Exception as e:
+        print(f"Critical Error: {str(e)}")
 
 if __name__ == "__main__":
     post_tweet()
