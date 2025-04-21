@@ -8,11 +8,11 @@ import json
 import os
 
 # ===== TWITTER V2 API CONFIG =====
-BEARER_TOKEN = os.getenv("BEARER_TOKEN", "AAAAAAAAAAAAAAAAAAAAAIUS0wEAAAAA5Ad5%2F6hcNYf%2FNjlcvdvLhAmFQw8%3Dq0F7XhchJVZF2OVgPQ3F1CajBbHHcOUaqoSwzS1TCVsmXPozw8")
-API_KEY = os.getenv("API_KEY", "dpv4WE2Fz6qXb3zYaLi47mnTt")
-API_SECRET = os.getenv("API_SECRET", "BbJKl0sAIoOo6o6gD8HekZRpfQujIPKyBEPb8b5dZSbttLtW6I")
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN", "BbJKl0sAIoOo6o6gD8HekZRpfQujIPKyBEPb8b5dZSbttLtW6I")
-ACCESS_SECRET = os.getenv("ACCESS_SECRET", "ahSKHOVkNveMgJ1NLaqVBrrTU8ivZhxxCGp3oaD1Pplf")
+BEARER_TOKEN = os.getenv("BEARER_TOKEN")
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+ACCESS_SECRET = os.getenv("ACCESS_SECRET")
 
 # Initialize v2 Client with OAuth 1.0a
 # For user data (READ operations)
