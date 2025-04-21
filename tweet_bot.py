@@ -15,14 +15,16 @@ ACCESS_TOKEN = os.getenv("ACCESS_TOKEN", "BbJKl0sAIoOo6o6gD8HekZRpfQujIPKyBEPb8b
 ACCESS_SECRET = os.getenv("ACCESS_SECRET", "ahSKHOVkNveMgJ1NLaqVBrrTU8ivZhxxCGp3oaD1Pplf")
 
 # Initialize v2 Client with OAuth 1.0a
-client = tweepy.Client(
+# For user data (READ operations)
+read_client = tweepy.Client(bearer_token=BEARER_TOKEN)
+
+# For posting (WRITE operations)
+write_client = tweepy.Client(
     consumer_key=API_KEY,
     consumer_secret=API_SECRET,
     access_token=ACCESS_TOKEN,
-    access_token_secret=ACCESS_SECRET,
-    wait_on_rate_limit=True
+    access_token_secret=ACCESS_SECRET
 )
-
 # ===== USAGE TRACKER =====
 class UsageTracker:
     def __init__(self):
@@ -58,14 +60,14 @@ RSS_FEEDS = [
 # ===== CONTENT GENERATORS =====
 def get_celeb_content():
     try:
-        if tracker.get_usage()['reads'] >= 95:
+        celeb = random.choice(GLOBAL_CELEBS)
+        # Use read client with bearer token
+        user = read_client.get_user(username=celeb)
+        if user.errors:
             return None
             
-        celeb = random.choice(GLOBAL_CELEBS)
-        user = client.get_user(username=celeb)
-        tracker.log_read()
+        tweets = read_client.get_users_tweets(user.data.id, max_results=5)
         
-        tweets = client.get_users_tweets(user.data.id, max_results=5)
         tracker.log_read()
         
         valid_tweets = [t for t in tweets.data if not t.text.startswith("RT ")]
