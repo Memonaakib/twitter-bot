@@ -126,7 +126,7 @@ def post_tweet():
         content = content[:275] + " #AI"  # Add required hashtag
         
         # Post tweet
-        response = client.create_tweet(text=content)
+        response = write_client.create_tweet(text=content)
         tracker.log_write()
         print(f"✅ Posted at {datetime.now()}: {content[:50]}...")
         
