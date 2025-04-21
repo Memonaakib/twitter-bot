@@ -49,7 +49,7 @@ GLOBAL_CELEBS = [
     "Malala", "UN", "WHO", "BillGates", "nytimes", "BBCWorld", "Reuters"
 ]
 
-NEWS_API_KEY = os.getenv("NEWS_API_KEY", "ec31e15ee7b34f4d8aef23fca516f9e0")
+NEWS_API_KEY = os.getenv("NEWS_API")
 RSS_FEEDS = [
     "http://feeds.bbci.co.uk/news/rss.xml",
     "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
