@@ -86,7 +86,7 @@ def get_cached_celeb_content():
         if not valid_tweets:
             return None
             
-        best_tweet = max(valid_tweets, key=lambda x: x.public_metrics['like_count'3])
+        best_tweet = max(valid_tweets, key=lambda x: x.public_metrics['like_count'])
         return f"{best_tweet.text}\n\n- @{celeb} #GlobalVoice"
         
     except Exception as e:
