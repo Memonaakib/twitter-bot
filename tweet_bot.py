@@ -4,136 +4,137 @@ import requests
 import random
 import time
 from datetime import datetime
+import json
+import os
 
-# ===== TWITTER AUTH ===== (OAuth 1.0a)
-API_KEY = "dpv4WE2Fz6qXb3zYaLi47mnTt"
-API_SECRET = "BbJKl0sAIoOo6o6gD8HekZRpfQujIPKyBEPb8b5dZSbttLtW6I"
-ACCESS_TOKEN = "1884012353815207939-xIWdpeLviThza87zG03KXHqWgC0vhj"
-ACCESS_SECRET = "ahSKHOVkNveMgJ1NLaqVBrrTU8ivZhxxCGp3oaD1PplfT"
+# ===== TWITTER V2 API CONFIG =====
+BEARER_TOKEN = os.getenv("BEARER_TOKEN", "AAAAAAAAAAAAAAAAAAAAAIUS0wEAAAAA5Ad5%2F6hcNYf%2FNjlcvdvLhAmFQw8%3Dq0F7XhchJVZF2OVgPQ3F1CajBbHHcOUaqoSwzS1TCVsmXPozw8")
+API_KEY = os.getenv("API_KEY", "dpv4WE2Fz6qXb3zYaLi47mnTt")
+API_SECRET = os.getenv("API_SECRET", "BbJKl0sAIoOo6o6gD8HekZRpfQujIPKyBEPb8b5dZSbttLtW6I")
+ACCESS_TOKEN = os.getenv("ACCESS_TOKEN", "BbJKl0sAIoOo6o6gD8HekZRpfQujIPKyBEPb8b5dZSbttLtW6I")
+ACCESS_SECRET = os.getenv("ACCESS_SECRET", "ahSKHOVkNveMgJ1NLaqVBrrTU8ivZhxxCGp3oaD1Pplf")
 
-auth = tweepy.OAuth1UserHandler(
-    API_KEY, API_SECRET,
-    ACCESS_TOKEN, ACCESS_SECRET
+# Initialize v2 Client with OAuth 1.0a
+client = tweepy.Client(
+    consumer_key=API_KEY,
+    consumer_secret=API_SECRET,
+    access_token=ACCESS_TOKEN,
+    access_token_secret=ACCESS_SECRET,
+    wait_on_rate_limit=True
 )
-api = tweepy.API(auth, wait_on_rate_limit=True)
 
-# ===== CONTENT SOURCES =====
-NEWS_API = "ec31e15ee7b34f4d8aef23fca516f9e0"
-CELEBS = [
-    # India
-    "narendramodi", "AmitabhBachchan", "SrBachchan", "iHrithik", "deepikapadukone",
-    "PMOIndia", "RahulGandhi", "akshaykumar", "priyankachopra", "AnushkaSharma",
-    
-    # United States
-    "BarackObama", "JoeBiden", "elonmusk", "taylorswift13", "TheRock",
-    "Oprah", "BillGates", "JeffBezos", "tim_cook", "Schwarzenegger",
-    
-    # China
-    "XHNews", "GlobalTimes", "JackMa", "Yaoming", "ZhangZiyi",
-    "LiKeqiang", "WangYidi", "realKrisWu", "JayChou", "LiuYifei",
-    
-    # Japan
-    "AbeShinzo", "HayaoMiyazaki", "YoshihideSuga", "taku2015", "hiroshima_peace",
-    "ShinzoMiyazaki", "HarukiMurakami", "ShinyaYamanaka", "maki_osawa", "nagashima_ichiro",
-    
-    # Gaza/Palestine
-    "RashidaTlaib", "MohammedAssaf", "MaiRawah", "DrEbaa", "GazaYouthBrigade",
-    "Palestine_UN", "Mustafa_Barghouti", "HaninZoabi", "MunaElKurd", "Gazanews",
-    
-    # Global Tech
-    "sundarpichai", "satyanadella", "AndrewYNg", "ylecun", "danielgross",
-    "SamAltman", "BrianArmstrong", "VitalikButerin", "cdixon", "jack",
-    
-    # Global Activists
-    "GretaThunberg", "Malala", "EmmaWatson", "LeonardoDiCaprio", "algore",
-    "JaneGoodallInst", "VanessaNakate", "XiyeBastida", "chelseahandler", "simone_biles",
-    
-    # Business Leaders
-    "WarrenBuffett", "CarlosSlim", "MasayoshiSon", "richardbranson", "MukeshAmbani",
-    "RayDalio", "JamieDimon", "guyraz", "AriannaHuff", "dhh",
-    
-    # Media Personalities
-    "iamsrk", "shakira", "BTS_twt", "jimmyfallon", "ConanOBrien",
-    "BBCWorld", "CNN", "AJEnglish", "Reuters", "nytimes",
-    
-    # Sports Icons
-    "Cristiano", "neymarjr", "KingJames", "stephencurry30", "UsainBolt",
-    "serenawilliams", "naomiOsaka", "messi", "rogerfederer", "FIFAcom"
-]
-
-FALLBACK_TWEETS = [
-    "🌟 Great ideas deserve to be shared! #Inspiration",
-    "💡 Curiosity fuels innovation. Stay curious! #Motivation",
-    "🚀 The future is built today. What's your next step? #AI"
-]
-
-def get_celeb_tweet():
-    try:
-        celeb = random.choice(CELEBS)
-        tweets = api.user_timeline(screen_name=celeb, count=5, tweet_mode='extended')
-        valid_tweets = [t for t in tweets if not t.retweeted and not hasattr(t, 'retweeted_status')]
+# ===== USAGE TRACKER =====
+class UsageTracker:
+    def __init__(self):
+        self.reads = 0
+        self.writes = 0
         
+    def log_read(self, count=1):
+        self.reads += count
+        
+    def log_write(self):
+        self.writes += 1
+        
+    def get_usage(self):
+        return {"reads": self.reads, "writes": self.writes}
+
+tracker = UsageTracker()
+
+# ===== CONTENT SOURCES ===== 
+GLOBAL_CELEBS = [
+    "narendramodi", "BarackObama", "elonmusk", "taylorswift13", "PMOIndia",
+    "RahulGandhi", "SrBachchan", "XHNews", "AbeShinzo", "GretaThunberg",
+    "Malala", "UN", "WHO", "BillGates", "nytimes", "BBCWorld", "Reuters"
+]
+
+NEWS_API_KEY = os.getenv("NEWS_API_KEY", "ec31e15ee7b34f4d8aef23fca516f9e0")
+RSS_FEEDS = [
+    "http://feeds.bbci.co.uk/news/rss.xml",
+    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+    "https://www.aljazeera.com/xml/rss/all.xml",
+    "https://feeds.npr.org/1001/rss.xml"
+]
+
+# ===== CONTENT GENERATORS =====
+def get_celeb_content():
+    try:
+        if tracker.get_usage()['reads'] >= 95:
+            return None
+            
+        celeb = random.choice(GLOBAL_CELEBS)
+        user = client.get_user(username=celeb)
+        tracker.log_read()
+        
+        tweets = client.get_users_tweets(user.data.id, max_results=5)
+        tracker.log_read()
+        
+        valid_tweets = [t for t in tweets.data if not t.text.startswith("RT ")]
         if not valid_tweets:
             return None
             
-        best_tweet = max(valid_tweets, key=lambda x: x.favorite_count)
-        return f"{best_tweet.full_text}\n\n- @{celeb} #Trending"
+        best_tweet = max(valid_tweets, key=lambda x: x.public_metrics['like_count'])
+        return f"{best_tweet.text}\n\n- @{celeb} #GlobalVoice"
         
     except Exception as e:
         print(f"Celeb Error: {str(e)}")
         return None
 
-def get_news():
+def get_news_content():
     try:
-        response = requests.get(
-            f"https://newsapi.org/v2/top-headlines?category=business&apiKey=ec31e15ee7b34f4d8aef23fca516f9e0",
-            timeout=15
-        )
-        
-        if response.status_code != 200:
-            print(f"NewsAPI HTTP Error: {response.status_code}")
-            return None
-            
-        news = response.json()
-        
-        if news.get('status') != 'ok':
-            print(f"NewsAPI Error: {news.get('message', 'Unknown')}")
-            return None
-            
-        articles = news.get('articles', [])
-        valid_articles = [
-            a for a in articles 
-            if a.get('title') 
-            and len(a['title']) > 20 
-            and not "[Removed]" in a['title']
-        ]
-        
-        if not valid_articles:
-            print("No valid articles")
-            return None
-            
-        article = random.choice(valid_articles)
-        return f"📰 {article['title'].strip()}\n\n{article.get('url', '')} #News"
+        # Try NewsAPI first
+        if random.random() < 0.7 and tracker.get_usage()['reads'] < 90:
+            response = requests.get(
+                f"https://newsapi.org/v2/top-headlines?category=general&apiKey=ec31e15ee7b34f4d8aef23fca516f9e0",
+                timeout=10
+            )
+            news = response.json()
+            if news.get('status') == 'ok' and news.get('articles'):
+                article = random.choice(news['articles'])
+                tracker.log_read()
+                return f"📰 {article['title']}\n{article.get('url', '')} #News"
+                
+        # Fallback to RSS
+        import feedparser
+        feed = feedparser.parse(random.choice(RSS_FEEDS))
+        entry = random.choice(feed.entries)
+        return f"🌐 {entry.title}\n{entry.link} #Headlines"
         
     except Exception as e:
         print(f"News Error: {str(e)}")
         return None
 
+# ===== CORE FUNCTIONALITY =====        
 def post_tweet():
     try:
-        content = get_celeb_tweet() or get_news() or random.choice(FALLBACK_TWEETS)
-        
-        # Ensure compliance with Twitter rules
-        content = content[:280]  # Character limit
-        if "#AI" not in content:
-            content += " #AI"  # Automation disclosure
+        if tracker.get_usage()['writes'] >= 495:
+            print("⚠️ Monthly write limit reached")
+            return
             
-        api.update_status(content)
-        print(f"Posted at {datetime.now()}:\n{content}")
+        content = None
+        attempts = 0
         
+        while not content and attempts < 3:
+            content = get_celeb_content() or get_news_content()
+            attempts += 1
+            
+        if not content:
+            content = "🌍 Stay informed! More insights coming soon. #Knowledge"
+            
+        # Ensure compliance
+        content = content[:275] + " #AI"  # Add required hashtag
+        
+        # Post tweet
+        response = client.create_tweet(text=content)
+        tracker.log_write()
+        print(f"✅ Posted at {datetime.now()}: {content[:50]}...")
+        
+        # Log usage
+        with open("usage.json", "w") as f:
+            json.dump(tracker.get_usage(), f)
+            
     except tweepy.TweepyException as e:
-        print(f"Posting Failed: {str(e)}")
+        print(f"🚨 Post Failed: {str(e)}")
+        time.sleep(60)
 
 if __name__ == "__main__":
     post_tweet()
-    time.sleep(5)  # Prevent rapid exit
