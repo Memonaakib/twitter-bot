@@ -31,15 +31,13 @@ def get_celeb_tweet():
 def get_news():
     # Get top business news
     news = requests.get(f"https://newsapi.org/v2/top-headlines?category=business&apiKey={NEWS_API}").json()
+    print(f"NewsAPI Response: {news}")  # Add before article selection
     article = random.choice(news['articles'])
     return f"📰 {article['title']}\n\n{article['url']} #News"
-
+    
 def post_tweet():
-    # Choose content type randomly
-    if random.random() > 0.5:
-        content = get_celeb_tweet()
-    else:
-        content = get_news()
+    content = get_celeb_tweet() or get_news() or "🌟 Inspiration coming soon! #AI"
+    api.update_status(content)
     
     if content:
         api.update_status(content)
