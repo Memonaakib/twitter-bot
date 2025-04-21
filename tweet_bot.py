@@ -58,30 +58,35 @@ RSS_FEEDS = [
 ]
 
 # ===== CONTENT GENERATORS =====
-def get_celeb_content():
+CELEB_CACHE = {}
+CACHE_EXPIRY = 3600  # 1 hour
+
+def get_cached_celeb_content():
     try:
+        now = time.time()
         celeb = random.choice(GLOBAL_CELEBS)
-        # Use read client with bearer token
-        time.sleep(2)  # 2-second delay between API calls
         
-        user = read_client.get_user(username=celeb)
-        if user.errors:
-            return None
+        # Use cached data if available
+        if celeb in CELEB_CACHE and now - CELEB_CACHE[celeb]['timestamp'] < CACHE_EXPIRY:
+            tweets = CELEB_CACHE[celeb]['tweets']
+            tracker.log_read(count=0)  # No API call used
+        else:
+            user = read_client.get_user(username=celeb)
+            tracker.log_read()
             
-        tweets = read_client.get_users_tweets(user.data.id, max_results=5)
-        retries = 0
-        while retries < 3 and (not tweets.data or tweets.errors):
-            time.sleep(5 ** retries)
-            tweets = read_client.get_users_tweets(user.data.id, max_results=5)
-            retries += 1
+            tweets = read_client.get_users_tweets(user.data.id, max_results=3)  # Reduced from 5
+            tracker.log_read()
             
-        tracker.log_read()
+            CELEB_CACHE[celeb] = {
+                'tweets': tweets.data,
+                'timestamp': now
+            }
         
         valid_tweets = [t for t in tweets.data if not t.text.startswith("RT ")]
         if not valid_tweets:
             return None
             
-        best_tweet = max(valid_tweets, key=lambda x: x.public_metrics['like_count'])
+        best_tweet = max(valid_tweets, key=lambda x: x.public_metrics['like_count'3])
         return f"{best_tweet.text}\n\n- @{celeb} #GlobalVoice"
         
     except Exception as e:
