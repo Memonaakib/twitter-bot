@@ -52,7 +52,7 @@ GLOBAL_CELEBS = [
 NEWS_API = os.getenv("NEWS_API")
 RSS_FEEDS = [
     "http://feeds.bbci.co.uk/news/rss.xml",
-    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml,
+    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
     "https://www.aljazeera.com/xml/rss/all.xml",
     "https://feeds.npr.org/1001/rss.xml"
 ]
