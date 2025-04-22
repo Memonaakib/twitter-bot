@@ -52,7 +52,7 @@ GLOBAL_CELEBS = [
 NEWS_API = os.getenv("NEWS_API")
 RSS_FEEDS = [
     "http://feeds.bbci.co.uk/news/rss.xml",
-    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml,
     "https://www.aljazeera.com/xml/rss/all.xml",
     "https://feeds.npr.org/1001/rss.xml"
 ]
@@ -92,21 +92,25 @@ def get_cached_celeb_content():
     except Exception as e:
         print(f"Celeb Error: {str(e)}")
         return None
-
+         if not user.data:
+            print(f"❌ User {celeb} not found")
+                return None
 def get_news_content():
     try:
         # Try NewsAPI first
         if random.random() < 0.7 and tracker.get_usage()['reads'] < 90:
             response = requests.get(
-                f"https://newsapi.org/v2/top-headlines?category=general&apiKey=ec31e15ee7b34f4d8aef23fca516f9e0",
+                f"https://newsapi.org/v2/top-headlines?category=general&apiKey={NEWS_API}",
                 timeout=10
             )
+    
             news = response.json()
+            
             if news.get('status') == 'ok' and news.get('articles'):
                 article = random.choice(news['articles'])
                 tracker.log_read()
                 return f"📰 {article['title']}\n{article.get('url', '')} #News"
-                
+              
         # Fallback to RSS
         import feedparser
         feed = feedparser.parse(random.choice(RSS_FEEDS))
@@ -116,7 +120,9 @@ def get_news_content():
     except Exception as e:
         print(f"News Error: {str(e)}")
         return None
-
+            if not feed.entries:
+                print("📭 Empty news feed")
+                return None  
 # ===== CORE FUNCTIONALITY =====        
 def post_tweet():
     try:
@@ -128,14 +134,14 @@ def post_tweet():
         attempts = 0
         
         while not content and attempts < 3:
-            content = get_celeb_content() or get_news_content()
+            content = get_cached_celeb_content() or get_news_content()
             attempts += 1
             
         if not content:
             content = "🌍 Stay informed! More insights coming soon. #Knowledge"
             
         # Ensure compliance
-        content = content[:275] + " #AI"  # Add required hashtag
+        content = F"{content[:275]} + " #AI"  # Add required hashtag
         
        # Post with retries
         retries = 0
