@@ -72,9 +72,15 @@ def get_cached_celeb_content():
             tracker.log_read(count=0)  # No API call used
         else:
             user = read_client.get_user(username=celeb)
+            if not user.data:
+                print(f"❌ User {celeb} not found")
+                return None
             tracker.log_read()
             
-            tweets = read_client.get_users_tweets(user.data.id, max_results=3)  # Reduced from 5
+            tweets = read_client.get_users_tweets(user.data.id, max_results=3) # Reduced from 5
+            if not tweets.data:
+                print(f"🚫 No tweets for {celeb}")
+                return None
             tracker.log_read()
             
             CELEB_CACHE[celeb] = {
@@ -92,9 +98,7 @@ def get_cached_celeb_content():
     except Exception as e:
         print(f"Celeb Error: {str(e)}")
         return None
-         if not user.data:
-            print(f"❌ User {celeb} not found")
-                return None
+            
 def get_news_content():
     try:
         # Try NewsAPI first
@@ -114,15 +118,16 @@ def get_news_content():
         # Fallback to RSS
         import feedparser
         feed = feedparser.parse(random.choice(RSS_FEEDS))
+        if not feed.entries:
+            print("📭 Empty RSS feed")
+            return None
         entry = random.choice(feed.entries)
         return f"🌐 {entry.title}\n{entry.link} #Headlines"
         
     except Exception as e:
         print(f"News Error: {str(e)}")
         return None
-            if not feed.entries:
-                print("📭 Empty news feed")
-                return None  
+            
 # ===== CORE FUNCTIONALITY =====        
 def post_tweet():
     try:
