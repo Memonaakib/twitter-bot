@@ -1,7 +1,7 @@
 name: Auto-Tweet Bot
 on:
   schedule:
-    - cron: "* */2 * * *"  # Every 35 minutes
+    - cron: "* */3 * * *"  # Every 35 minutes
   workflow_dispatch:
 
 jobs:
