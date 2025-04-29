@@ -12,8 +12,18 @@ import ssl
 from bs4 import BeautifulSoup
 from readability import Document
 from newspaper import Article
+from nltk.data import find
+def ensure_punkt():
+    try:
+        find('tokenizers/punkt')
+    except LookupError:
+        nltk.download('punkt', quiet=True, download_dir=os.path.expanduser('~/.nltk_data'))
 
-nltk.download('punkt')
+# Set NLTK data path so both local runs and CI use the same cache
+nltk.data.path.append(os.path.expanduser('~/.nltk_data'))
+
+# Only downloads once (or if truly missing)
+ensure_punkt()
 
 # ===== API CONFIGURATION =====
 BEARER_TOKEN = os.getenv("BEARER_TOKEN")
