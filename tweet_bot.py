@@ -8,7 +8,8 @@ import os
 import feedparser
 from newspaper import Article
 import openai
-
+import nltk
+nltk.download('punkt')
 # ===== API CONFIG =====
 BEARER_TOKEN = os.getenv("BEARER_TOKEN")
 API_KEY = os.getenv("API_KEY")
