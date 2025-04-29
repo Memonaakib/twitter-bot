@@ -6,10 +6,6 @@ openai==1.30.5
 nltk==3.8.1
 beautifulsoup4==4.12.3
 readability-lxml==0.8.1
-lxml-html-clean
-bs4
-
-lxml[html_clean]>=4.9.3
 newspaper3k==0.2.8
 lxml==5.2.1
 html5lib==1.1
