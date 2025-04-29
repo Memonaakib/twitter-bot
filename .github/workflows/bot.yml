@@ -20,19 +20,31 @@ jobs:
       - name: 📥 Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxml2-dev libxslt-dev python3-dev
-
+          sudo apt-get install -y \
+          libxml2-dev \
+          libxslt-dev \
+          libxslt1-dev \
+          libffi-dev \
+          libssl-dev \
+          python3-dev \
+          zlib1g-dev
       - name: 🔧 Install Python packages
-        run: |
-          python -m pip install --upgrade pip
-          pip install tweepy==4.14.0
-          pip install requests==2.31.0
-          pip install feedparser==6.0.10
-          pip install openai==1.30.5  # Critical update
-          pip install newspaper3k==0.2.8 lxml==5.2.1 html5lib==1.1
-          pip install readability-lxml==0.8.1
-          python -m nltk.downloader punkt
-
+  run: |
+    python -m pip install --upgrade pip
+    pip install \
+      tweepy==4.14.0 \
+      requests==2.31.0 \
+      feedparser==6.0.10 \
+      openai==1.30.5 \
+      newspaper3k==0.2.8 \
+      lxml==5.2.1 \
+      html5lib==1.1 \
+      readability-lxml==0.8.1 \
+      cchardet==2.1.7 \  # Faster encoding detection
+      cssselect==1.2.0 \  # HTML parsing requirement
+      python-dotenv==1.0.1
+    python -m nltk.downloader punkt
+    
       - name: 📊 Initialize usage tracker
         run: |
           if [ ! -f usage.json ]; then
