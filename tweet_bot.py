@@ -12,10 +12,15 @@ from bs4 import BeautifulSoup
 from readability import Document
 from newspaper import Article
 from nltk.data import find
-# at the top, unset any proxy envs to avoid the proxies kwarg issue:
+import openai  # Import OpenAI directly
+
+# Unset any proxy envs to avoid the proxies kwarg issue
 os.environ.pop("HTTP_PROXY", None)
 os.environ.pop("HTTPS_PROXY", None)
-from openai import OpenAI
+
+# Set OpenAI API key directly
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
 def ensure_punkt():
     try:
         find('tokenizers/punkt')
@@ -108,11 +113,11 @@ def extract_full_text(url):
     except Exception as e:
         print(f"❌ Extraction failed: {str(e)}")
         return None
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 def summarize_text(text):
     """Generate AI summary using OpenAI"""
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{
                 "role": "user",
@@ -121,7 +126,7 @@ def summarize_text(text):
             temperature=0.7,
             max_tokens=150
         )
-        return response.choices[0].message.content.strip()
+        return response.choices[0].message['content'].strip()
     except Exception as e:
         print(f"❌ Summarization error: {str(e)}")
         return None
@@ -187,7 +192,6 @@ def post_tweet():
                 retries += 1
                 
         # Update usage
-
         with open("usage.json", "w") as f:
             json.dump(tracker.get_usage(), f)
 
