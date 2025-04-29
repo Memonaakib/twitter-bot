@@ -99,7 +99,7 @@ def extract_full_text(url):
 def summarize_text(text):
     """Generate AI summary using OpenAI"""
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completion.create(
             model="gpt-3.5-turbo",
             messages=[{
                 "role": "user",
