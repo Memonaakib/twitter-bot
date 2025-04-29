@@ -11,6 +11,7 @@ import nltk
 import ssl
 from bs4 import BeautifulSoup
 from readability import Document
+from newspaper import Article
 
 nltk.download('punkt')
 
