@@ -2,7 +2,7 @@
 tweepy==4.14.0
 requests==2.31.0
 feedparser==6.0.10
-openai==0.28.1
+openai==1.30.5
 nltk==3.8.1
 beautifulsoup4==4.12.3
 readability-lxml==0.8.1
