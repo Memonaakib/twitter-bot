@@ -1,4 +1,3 @@
-# tweet_bot.py
 import tweepy
 import requests
 import random
@@ -6,25 +5,27 @@ import time
 from datetime import datetime
 import json
 import os
+import feedparser
+from newspaper import Article
+import openai
 
-# ===== TWITTER V2 API CONFIG =====
+# ===== API CONFIG =====
 BEARER_TOKEN = os.getenv("BEARER_TOKEN")
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 ACCESS_SECRET = os.getenv("ACCESS_SECRET")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai.api_key = OPENAI_API_KEY
 
-# Initialize v2 Client with OAuth 1.0a
-# For user data (READ operations)
 read_client = tweepy.Client(bearer_token=BEARER_TOKEN)
-
-# For posting (WRITE operations)
 write_client = tweepy.Client(
     consumer_key=API_KEY,
     consumer_secret=API_SECRET,
     access_token=ACCESS_TOKEN,
     access_token_secret=ACCESS_SECRET
 )
+
 # ===== USAGE TRACKER =====
 class UsageTracker:
     def __init__(self):
@@ -49,15 +50,42 @@ GLOBAL_CELEBS = [
     "Malala", "UN", "WHO", "BillGates", "nytimes", "BBCWorld", "Reuters"
 ]
 
-NEWS_API = os.getenv("NEWS_API")
 RSS_FEEDS = [
     "http://feeds.bbci.co.uk/news/rss.xml",
-    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+    "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
     "https://www.aljazeera.com/xml/rss/all.xml",
-    "https://feeds.npr.org/1001/rss.xml"
+    "https://feeds.npr.org/1001/rss.xml",
+    "https://www.cnn.com/rss/edition.rss",
+    "https://www.reutersagency.com/feed/?best-topics=business&post_type=best"
 ]
 
-# ===== CONTENT GENERATORS =====
+# ===== ARTICLE EXTRACTOR =====
+def extract_full_text(url):
+    try:
+        article = Article(url)
+        article.download()
+        article.parse()
+        return article.text
+    except Exception as e:
+        print(f"❌ Article extraction failed: {e}")
+        return None
+
+# ===== SUMMARIZER =====
+def summarize_text(text):
+    try:
+        prompt = f"Summarize this news article in 2-3 simple, readable sentences for a general audience:\n\n{text}"
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=120
+        )
+        return response['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        print(f"❌ Summarization error: {e}")
+        return None
+
+# ===== CELEB TWEETS (Fallback) =====
 CELEB_CACHE = {}
 CACHE_EXPIRY = 3600  # 1 hour
 
@@ -66,27 +94,14 @@ def get_cached_celeb_content():
         now = time.time()
         celeb = random.choice(GLOBAL_CELEBS)
         
-        # Use cached data if available
         if celeb in CELEB_CACHE and now - CELEB_CACHE[celeb]['timestamp'] < CACHE_EXPIRY:
             tweets = CELEB_CACHE[celeb]['tweets']
-            tracker.log_read(count=0)  # No API call used
         else:
             user = read_client.get_user(username=celeb)
-            if not user.data:
-                print(f"❌ User {celeb} not found")
-                return None
             tracker.log_read()
-            
-            tweets = read_client.get_users_tweets(user.data.id, max_results=3) # Reduced from 5
-            if not tweets.data:
-                print(f"🚫 No tweets for {celeb}")
-                return None
+            tweets = read_client.get_users_tweets(user.data.id, max_results=3)
             tracker.log_read()
-            
-            CELEB_CACHE[celeb] = {
-                'tweets': tweets.data,
-                'timestamp': now
-            }
+            CELEB_CACHE[celeb] = {'tweets': tweets.data, 'timestamp': now}
         
         valid_tweets = [t for t in tweets.data if not t.text.startswith("RT ")]
         if not valid_tweets:
@@ -96,63 +111,54 @@ def get_cached_celeb_content():
         return f"{best_tweet.text}\n\n- @{celeb} #GlobalVoice"
         
     except Exception as e:
-        print(f"Celeb Error: {str(e)}")
+        print(f"❌ Celeb Error: {str(e)}")
         return None
-            
+
+# ===== GET NEWS CONTENT =====
 def get_news_content():
     try:
-        # Try NewsAPI first
-        if random.random() < 0.7 and tracker.get_usage()['reads'] < 90:
-            response = requests.get(
-                f"https://newsapi.org/v2/top-headlines?category=general&apiKey={NEWS_API}",
-                timeout=10
-            )
-    
-            news = response.json()
-            
-            if news.get('status') == 'ok' and news.get('articles'):
-                article = random.choice(news['articles'])
-                tracker.log_read()
-                return f"📰 {article['title']}\n{article.get('url', '')} #News"
-              
-        # Fallback to RSS
-        import feedparser
         feed = feedparser.parse(random.choice(RSS_FEEDS))
         if not feed.entries:
-            print("📭 Empty RSS feed")
             return None
         entry = random.choice(feed.entries)
-        return f"🌐 {entry.title}\n{entry.link} #Headlines"
-        
+        url = entry.link
+
+        full_text = extract_full_text(url)
+        if not full_text or len(full_text) < 300:
+            return None
+
+        summary = summarize_text(full_text)
+        if not summary:
+            return None
+
+        return f"📰 {summary}\nRead more: {url} #News"
     except Exception as e:
-        print(f"News Error: {str(e)}")
+        print(f"❌ News Error: {str(e)}")
         return None
-            
-# ===== CORE FUNCTIONALITY =====        
+
+# ===== MAIN POST FUNCTION =====        
 def post_tweet():
     try:
         if tracker.get_usage()['writes'] >= 495:
             print("⚠️ Monthly write limit reached")
             return
-            
+        
         content = None
         attempts = 0
         
         while not content and attempts < 3:
-            content = get_cached_celeb_content() or get_news_content()
+            content = get_news_content() or get_cached_celeb_content()
             attempts += 1
             
         if not content:
             content = "🌍 Stay informed! More insights coming soon. #Knowledge"
-            
-        # Ensure compliance
-        content = F"{content[:275]} + " #AI"  # Add required hashtag
         
-       # Post with retries
+        content = content[:275] + " #AI"
+        
         retries = 0
         while retries < 3:
             try:
-                response = write_client.create_tweet(text=content)
+                write_client.create_tweet(text=content)
                 tracker.log_write()
                 print(f"✅ Posted at {datetime.now()}: {content[:50]}...")
                 break
@@ -160,13 +166,12 @@ def post_tweet():
                 print(f"🚨 Post Failed: {str(e)}")
                 time.sleep(5 ** retries)
                 retries += 1
-        
-        # Log usage
+
         with open("usage.json", "w") as f:
             json.dump(tracker.get_usage(), f)
-            
+
     except Exception as e:
-        print(f"Critical Error: {str(e)}")
+        print(f"❗ Critical Error: {str(e)}")
 
 if __name__ == "__main__":
     post_tweet()
