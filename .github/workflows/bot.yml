@@ -21,25 +21,28 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-          libxml2-dev \
-          libxslt-dev \
-          libxslt1-dev \
-          libffi-dev \
-          libssl-dev \
-          python3-dev \
-          zlib1g-dev
+            libxml2-dev \
+            libxslt-dev \
+            libxslt1-dev \
+            libffi-dev \
+            libssl-dev \
+            python3-dev \
+            zlib1g-dev
+
       - name: 🔧 Install Python packages
-  run: |
-    pip install `
-      newspaper3k==0.2.8 `
-      beautifulsoup4==4.12.3 `
-      lxml==5.2.1 `
-      html5lib==1.1 `
-      cssselect==1.2.0 `
-      cchardet==2.1.7 `
-      tweepy==4.14.0 `
-      openai==1.30.5
-    
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            newspaper3k==0.2.8 \
+            beautifulsoup4==4.12.3 \
+            lxml==5.2.1 \
+            html5lib==1.1 \
+            cssselect==1.2.0 \
+            cchardet==2.1.7 \
+            tweepy==4.14.0 \
+            openai==1.30.5
+          python -m nltk.downloader punkt
+
       - name: 📊 Initialize usage tracker
         run: |
           if [ ! -f usage.json ]; then
