@@ -62,22 +62,40 @@ RSS_FEEDS = [
 
 # ===== ARTICLE EXTRACTOR =====
 from newspaper import Article, Config
+import ssl
+
 def extract_full_text(url):
     try:
-        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+        # Bypass SSL verification for problematic sites
+        ssl._create_default_https_context = ssl._create_unverified_context
+        
+        # Enhanced configuration
         config = Config()
-        config.browser_user_agent = user_agent
-        config.request_timeout = 15
+        config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+        config.request_timeout = 20
         config.keep_article_html = True
+        config.fetch_images = False
+        config.memoize_articles = False
         
         article = Article(url, config=config)
         article.download()
         article.parse()
-        article.nlp()  # Required for proper text extraction
+        article.nlp()  # Critical for text extraction
         
         return article.text
     except Exception as e:
-        print(f"❌ Article extraction failed: {e}")
+        print(f"❌ Article extraction failed: {str(e)}")
+        return None
+        
+from readability import Document
+import requests
+
+def fallback_extract_text(url):
+    try:
+        response = requests.get(url, timeout=15)
+        doc = Document(response.text)
+        return doc.summary()
+    except:
         return None
 
 # ===== SUMMARIZER =====
@@ -130,18 +148,19 @@ def get_news_content():
         feed = feedparser.parse(random.choice(RSS_FEEDS))
         if not feed.entries:
             return None
+            
         entry = random.choice(feed.entries)
         url = entry.link
 
-        full_text = extract_full_text(url)
+        # Try multiple extraction methods
+        full_text = extract_full_text(url) or fallback_extract_text(url)
+        
         if not full_text or len(full_text) < 300:
             return None
 
         summary = summarize_text(full_text)
-        if not summary:
-            return None
-
-        return f"📰 {summary}\nRead more: {url} #News"
+        return f"📰 {summary}\nRead more: {url} #News" if summary else None
+        
     except Exception as e:
         print(f"❌ News Error: {str(e)}")
         return None
