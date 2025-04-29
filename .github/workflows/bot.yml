@@ -9,47 +9,35 @@ jobs:
   tweet:
     runs-on: ubuntu-latest
     steps:
-      - name: 📦 Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python 3.10
+      - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      - name: 📥 Install system dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libxml2-dev \
             libxslt-dev \
-            libxslt1-dev \
             libffi-dev \
-            libssl-dev \
-            python3-dev \
-            zlib1g-dev
+            python3-dev
 
-      - name: 🔧 Install Python packages
+      - name: Install Python packages
         run: |
           python -m pip install --upgrade pip
-          pip install \
-            newspaper3k==0.2.8 \
-            beautifulsoup4==4.12.3 \
-            lxml==5.2.1 \
-            html5lib==1.1 \
-            cssselect==1.2.0 \
-            cchardet==2.1.7 \
-            tweepy==4.14.0 \
-            openai==1.30.5
+          pip install -r requirements.txt
           python -m nltk.downloader punkt
 
-      - name: 📊 Initialize usage tracker
+      - name: Initialize usage tracker
         run: |
           if [ ! -f usage.json ]; then
             echo '{"reads":0,"writes":0}' > usage.json
           fi
 
-      - name: ▶️ Run Twitter Bot
+      - name: Run Twitter Bot
         env:
           BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
           API_KEY: ${{ secrets.API_KEY }}
