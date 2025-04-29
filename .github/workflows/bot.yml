@@ -20,7 +20,12 @@ jobs:
       - name: 📥 Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install tweepy==4.14.0
+          pip install requests==2.31.0
+          pip install feedparser==6.0.10
+          pip install openai==0.27.0
+          pip install newspaper3k==0.2.8
+          pip install nltk==3.7
 
       - name: 📊 Initialize usage tracker
         run: |
