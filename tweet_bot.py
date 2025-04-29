@@ -6,13 +6,16 @@ from datetime import datetime
 import json
 import os
 import feedparser
-from openai import OpenAI
 import nltk
 import ssl
 from bs4 import BeautifulSoup
 from readability import Document
 from newspaper import Article
 from nltk.data import find
+# at the top, unset any proxy envs to avoid the proxies kwarg issue:
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+from openai import OpenAI
 def ensure_punkt():
     try:
         find('tokenizers/punkt')
@@ -105,7 +108,7 @@ def extract_full_text(url):
     except Exception as e:
         print(f"❌ Extraction failed: {str(e)}")
         return None
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 def summarize_text(text):
     """Generate AI summary using OpenAI"""
     try:
