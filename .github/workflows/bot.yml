@@ -66,4 +66,6 @@ jobs:
           ACCESS_TOKEN:  ${{ secrets.ACCESS_TOKEN }}
           ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HTTP_PROXY:      ""
+          HTTPS_PROXY:     ""
         run: python tweet_bot.py
