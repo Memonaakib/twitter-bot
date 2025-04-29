@@ -61,11 +61,20 @@ RSS_FEEDS = [
 ]
 
 # ===== ARTICLE EXTRACTOR =====
+from newspaper import Article, Config
 def extract_full_text(url):
     try:
-        article = Article(url)
+        user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+        config = Config()
+        config.browser_user_agent = user_agent
+        config.request_timeout = 15
+        config.keep_article_html = True
+        
+        article = Article(url, config=config)
         article.download()
         article.parse()
+        article.nlp()  # Required for proper text extraction
+        
         return article.text
     except Exception as e:
         print(f"❌ Article extraction failed: {e}")
