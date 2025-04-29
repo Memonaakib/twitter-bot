@@ -12,14 +12,14 @@ from bs4 import BeautifulSoup
 from readability import Document
 from newspaper import Article
 from nltk.data import find
-import openai  # Import OpenAI directly
-
+from openai import OpenAI  # Import OpenAI directly
+from dotenv import load_dotenv
 # Unset any proxy envs to avoid the proxies kwarg issue
 os.environ.pop("HTTP_PROXY", None)
 os.environ.pop("HTTPS_PROXY", None)
 
 # Set OpenAI API key directly
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def ensure_punkt():
     try:
@@ -98,7 +98,7 @@ def extract_full_text(url):
             return article.text
             
         # Fallback 1: BeautifulSoup
-        response = requests.get(url, headers={'User-Agent': random.choice(USER_AGENTS)}, verify=False, timeout=15)
+        response = requests.get(url, headers={'User-Agent': random.choice(USER_AGENTS)}, verify=False, timeout=15,cert=ssl_context)
         soup = BeautifulSoup(response.text, 'lxml')
         for element in soup(['script', 'style', 'nav', 'footer']):
             element.decompose()
@@ -117,16 +117,16 @@ def extract_full_text(url):
 def summarize_text(text):
     """Generate AI summary using OpenAI"""
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{
                 "role": "user",
-                "content": f"Summarize this in 2 short, engaging sentences:\n\n{text[:3000]}"
+                "content": f"Summarize this in 2 short lines ,you can use hinglish, engaging sentences:\n\n{text[:3000]}"
             }],
             temperature=0.7,
             max_tokens=150
         )
-        return response.choices[0].message['content'].strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"❌ Summarization error: {str(e)}")
         return None
@@ -176,7 +176,8 @@ def post_tweet():
         if not content:
             content = "🌟 Stay curious! More insights coming soon. #Knowledge #AI"
         else:
-            content = content[:275] + " #Breaking"  # Ensure proper length
+            max_length = 280 - len(" #Breaking")
+            content = f"{content[:max_length-3]}... #Breaking"
             
         # Attempt to post
         retries = 0
@@ -188,7 +189,7 @@ def post_tweet():
                 break
             except tweepy.TweepyException as e:
                 print(f"🚨 Post Failed: {str(e)}")
-                time.sleep(5 ** retries)
+                time.sleep((10 * (2 ** retries)))
                 retries += 1
                 
         # Update usage
