@@ -8,6 +8,8 @@ beautifulsoup4==4.12.3
 readability-lxml==0.8.1
 newspaper3k==0.2.8
 lxml==5.2.1
+
+lxml-html-clean
 html5lib==1.1
 cssselect==1.2.0
 cchardet==2.1.7
