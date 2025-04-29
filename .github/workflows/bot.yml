@@ -21,6 +21,7 @@ jobs:
           pip install tweepy==4.14.0
           pip install requests==2.31.0
           pip install feedparser==6.0.10
+          run: pip install -r requirements.txt
 
       - name: Initialize usage tracker
         run: |
