@@ -1,40 +1,40 @@
 name: Auto-Tweet Bot
+
 on:
   schedule:
-    - cron: "* */3 * * *"  # Every 35 minutes
+    - cron: "0 */2 * * *"  # Every 2 hours
   workflow_dispatch:
 
 jobs:
   tweet:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: 📦 Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: 🐍 Set up Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
+      - name: 📥 Install dependencies
         run: |
-          pip install tweepy==4.14.0
-          pip install requests==2.31.0
-          pip install feedparser==6.0.10
-          run: pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Initialize usage tracker
+      - name: 📊 Initialize usage tracker
         run: |
           if [ ! -f usage.json ]; then
             echo '{"reads":0,"writes":0}' > usage.json
           fi
 
-      - name: Run Twitter Bot
+      - name: ▶️ Run Twitter Bot
         env:
           BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
           API_KEY: ${{ secrets.API_KEY }}
           API_SECRET: ${{ secrets.API_SECRET }}
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
-          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          NEWS_API: ${{ secrets.NEWS_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python tweet_bot.py
