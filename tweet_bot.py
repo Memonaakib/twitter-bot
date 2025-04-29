@@ -6,19 +6,23 @@ from datetime import datetime
 import json
 import os
 import feedparser
-from newspaper import Article
 import openai
 import nltk
+import ssl
+from bs4 import BeautifulSoup
+from readability import Document
+
 nltk.download('punkt')
-# ===== API CONFIG =====
+
+# ===== API CONFIGURATION =====
 BEARER_TOKEN = os.getenv("BEARER_TOKEN")
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 ACCESS_SECRET = os.getenv("ACCESS_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
 
+# Initialize Twitter clients
 read_client = tweepy.Client(bearer_token=BEARER_TOKEN)
 write_client = tweepy.Client(
     consumer_key=API_KEY,
@@ -44,157 +48,131 @@ class UsageTracker:
 
 tracker = UsageTracker()
 
-# ===== CONTENT SOURCES ===== 
-GLOBAL_CELEBS = [
-    "narendramodi", "BarackObama", "elonmusk", "taylorswift13", "PMOIndia",
-    "RahulGandhi", "SrBachchan", "XHNews", "AbeShinzo", "GretaThunberg",
-    "Malala", "UN", "WHO", "BillGates", "nytimes", "BBCWorld", "Reuters"
-]
-
+# ===== CONTENT SOURCES =====
 RSS_FEEDS = [
     "http://feeds.bbci.co.uk/news/rss.xml",
     "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
     "https://www.aljazeera.com/xml/rss/all.xml",
     "https://feeds.npr.org/1001/rss.xml",
-    "https://www.cnn.com/rss/edition.rss",
     "https://www.reutersagency.com/feed/?best-topics=business&post_type=best"
 ]
 
-# ===== ARTICLE EXTRACTOR =====
-from newspaper import Article, Config
-import ssl
+# ===== CONTENT PROCESSING =====
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1'
+]
 
 def extract_full_text(url):
+    """Extract article text with multiple fallback methods"""
     try:
-        # Bypass SSL verification for problematic sites
-        ssl._create_default_https_context = ssl._create_unverified_context
-        
-        # Enhanced configuration
-        config = Config()
-        config.browser_user_agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
-        config.request_timeout = 20
-        config.keep_article_html = True
-        config.fetch_images = False
-        config.memoize_articles = False
-        
-        article = Article(url, config=config)
+        # Configure SSL context
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        # First try: newspaper3k
+        article = Article(url, language='en')
         article.download()
         article.parse()
-        article.nlp()  # Critical for text extraction
-        
-        return article.text
-    except Exception as e:
-        print(f"❌ Article extraction failed: {str(e)}")
-        return None
-        
-from readability import Document
-import requests
-
-def fallback_extract_text(url):
-    try:
-        response = requests.get(url, timeout=15)
+        if len(article.text) > 300:
+            return article.text
+            
+        # Fallback 1: BeautifulSoup
+        response = requests.get(url, headers={'User-Agent': random.choice(USER_AGENTS)}, verify=False, timeout=15)
+        soup = BeautifulSoup(response.text, 'lxml')
+        for element in soup(['script', 'style', 'nav', 'footer']):
+            element.decompose()
+        text = ' '.join(soup.stripped_strings)
+        if len(text) > 300:
+            return text
+            
+        # Fallback 2: readability
         doc = Document(response.text)
         return doc.summary()
-    except:
+        
+    except Exception as e:
+        print(f"❌ Extraction failed: {str(e)}")
         return None
 
-# ===== SUMMARIZER =====
 def summarize_text(text):
+    """Generate AI summary using OpenAI"""
     try:
-        prompt = f"Summarize this news article in 2-3 simple, readable sentences for a general audience:\n\n{text}"
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
-            max_tokens=120
+            messages=[{
+                "role": "user",
+                "content": f"Summarize this in 2 short, engaging sentences:\n\n{text[:3000]}"
+            }],
+            temperature=0.7,
+            max_tokens=150
         )
-        return response['choices'][0]['message']['content'].strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"❌ Summarization error: {e}")
+        print(f"❌ Summarization error: {str(e)}")
         return None
 
-# ===== CELEB TWEETS (Fallback) =====
-CELEB_CACHE = {}
-CACHE_EXPIRY = 3600  # 1 hour
-
-def get_cached_celeb_content():
-    try:
-        now = time.time()
-        celeb = random.choice(GLOBAL_CELEBS)
-        
-        if celeb in CELEB_CACHE and now - CELEB_CACHE[celeb]['timestamp'] < CACHE_EXPIRY:
-            tweets = CELEB_CACHE[celeb]['tweets']
-        else:
-            user = read_client.get_user(username=celeb)
-            tracker.log_read()
-            tweets = read_client.get_users_tweets(user.data.id, max_results=3)
-            tracker.log_read()
-            CELEB_CACHE[celeb] = {'tweets': tweets.data, 'timestamp': now}
-        
-        valid_tweets = [t for t in tweets.data if not t.text.startswith("RT ")]
-        if not valid_tweets:
-            return None
-            
-        best_tweet = max(valid_tweets, key=lambda x: x.public_metrics['like_count'])
-        return f"{best_tweet.text}\n\n- @{celeb} #GlobalVoice"
-        
-    except Exception as e:
-        print(f"❌ Celeb Error: {str(e)}")
-        return None
-
-# ===== GET NEWS CONTENT =====
+# ===== CONTENT GENERATION =====
 def get_news_content():
+    """Generate news content from RSS feeds"""
     try:
         feed = feedparser.parse(random.choice(RSS_FEEDS))
         if not feed.entries:
             return None
             
         entry = random.choice(feed.entries)
-        url = entry.link
-
-        # Try multiple extraction methods
-        full_text = extract_full_text(url) or fallback_extract_text(url)
+        article_text = extract_full_text(entry.link)
         
-        if not full_text or len(full_text) < 300:
+        if not article_text or len(article_text) < 300:
             return None
-
-        summary = summarize_text(full_text)
-        return f"📰 {summary}\nRead more: {url} #News" if summary else None
+            
+        summary = summarize_text(article_text)
+        if not summary:
+            return None
+            
+        return f"📰 {summary}\n\n🔗 {entry.link} #News #AI"
         
     except Exception as e:
         print(f"❌ News Error: {str(e)}")
         return None
 
-# ===== MAIN POST FUNCTION =====        
+# ===== POSTING ENGINE =====        
 def post_tweet():
+    """Main posting function with error handling"""
     try:
         if tracker.get_usage()['writes'] >= 495:
             print("⚠️ Monthly write limit reached")
             return
-        
+            
         content = None
         attempts = 0
         
+        # Attempt to generate content
         while not content and attempts < 3:
-            content = get_news_content() or get_cached_celeb_content()
+            content = get_news_content()
             attempts += 1
+            time.sleep(1)
             
+        # Fallback content
         if not content:
-            content = "🌍 Stay informed! More insights coming soon. #Knowledge"
-        
-        content = content[:275] + " #AI"
-        
+            content = "🌟 Stay curious! More insights coming soon. #Knowledge #AI"
+        else:
+            content = content[:275] + " #Breaking"  # Ensure proper length
+            
+        # Attempt to post
         retries = 0
         while retries < 3:
             try:
                 write_client.create_tweet(text=content)
                 tracker.log_write()
-                print(f"✅ Posted at {datetime.now()}: {content[:50]}...")
+                print(f"✅ Posted at {datetime.now()}: {content[:60]}...")
                 break
             except tweepy.TweepyException as e:
                 print(f"🚨 Post Failed: {str(e)}")
                 time.sleep(5 ** retries)
                 retries += 1
+                
+        # Update usage
 
         with open("usage.json", "w") as f:
             json.dump(tracker.get_usage(), f)
