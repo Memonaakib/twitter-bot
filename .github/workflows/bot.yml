@@ -30,20 +30,15 @@ jobs:
           zlib1g-dev
       - name: 🔧 Install Python packages
   run: |
-    python -m pip install --upgrade pip
-    pip install \
-      tweepy==4.14.0 \
-      requests==2.31.0 \
-      feedparser==6.0.10 \
-      openai==1.30.5 \
-      newspaper3k==0.2.8 \
-      lxml==5.2.1 \
-      html5lib==1.1 \
-      readability-lxml==0.8.1 \
-      cchardet==2.1.7 \  # Faster encoding detection
-      cssselect==1.2.0 \  # HTML parsing requirement
-      python-dotenv==1.0.1
-    python -m nltk.downloader punkt
+    pip install `
+      newspaper3k==0.2.8 `
+      beautifulsoup4==4.12.3 `
+      lxml==5.2.1 `
+      html5lib==1.1 `
+      cssselect==1.2.0 `
+      cchardet==2.1.7 `
+      tweepy==4.14.0 `
+      openai==1.30.5
     
       - name: 📊 Initialize usage tracker
         run: |
