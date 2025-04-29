@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 import os
 import feedparser
-import openai
+from openai import OpenAI
 import nltk
 import ssl
 from bs4 import BeautifulSoup
@@ -95,11 +95,11 @@ def extract_full_text(url):
     except Exception as e:
         print(f"❌ Extraction failed: {str(e)}")
         return None
-
+client = OpenAI(api_key=OPENAI_API_KEY)
 def summarize_text(text):
     """Generate AI summary using OpenAI"""
     try:
-        response = openai.chat.completion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{
                 "role": "user",
