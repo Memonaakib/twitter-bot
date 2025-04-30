@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 from readability import Document
 from newspaper import Article
 from nltk.data import find
- # Import OpenAI directly
+import requests
 # Unset any proxy envs to avoid the proxies kwarg issue
 for proxy_var in ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']:
     os.environ.pop(proxy_var, None)
