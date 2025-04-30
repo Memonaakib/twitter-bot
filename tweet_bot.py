@@ -11,7 +11,7 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 
 # Configuration
-HISTORY_FILE = "posted.json"
+HISTORY_FILE = "usage.json"  # Changed to use usage.json
 CACHE_HOURS = 24
 VIRAL_KEYWORDS = ['viral', 'breaking', 'outbreak', 'surge', 'alert', 'exclusive']
 
@@ -24,22 +24,37 @@ class NewsBot:
             access_token_secret=os.getenv("ACCESS_SECRET"),
             wait_on_rate_limit=True
         )
-        self.posted = self.load_history()
+        self.usage_data = self.load_history()
+        self.posted = self.usage_data.get('posted', {})
         self.stop_words = set(stopwords.words('english'))
+        
+        # Update read count
+        self.usage_data['reads'] = self.usage_data.get('reads', 0) + 1
 
     def load_history(self):
         try:
             with open(HISTORY_FILE, 'r') as f:
                 data = json.load(f)
-                # Auto-clear old entries
-                return {k:v for k,v in data.items() 
-                       if datetime.fromisoformat(v) > datetime.now() - timedelta(hours=CACHE_HOURS)}
+                # Clean old entries
+                if 'posted' in data:
+                    data['posted'] = {
+                        k: v for k, v in data['posted'].items()
+                        if datetime.fromisoformat(v) > datetime.now() - timedelta(hours=CACHE_HOURS)
+                    }
+                return data
         except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+            # Initialize new usage structure
+            return {
+                'reads': 0,
+                'writes': 0,
+                'posted': {}
+            }
 
     def save_history(self):
+        # Update usage data before saving
+        self.usage_data['posted'] = self.posted
         with open(HISTORY_FILE, 'w') as f:
-            json.dump(self.posted, f)
+            json.dump(self.usage_data, f, indent=2)
 
     def content_hash(self, content):
         return hashlib.md5(content.encode()).hexdigest()
@@ -85,6 +100,7 @@ class NewsBot:
             tweet_text = f"{prefix}{article['title']}\n\n{article['content'][:250]}...\n\nSource: {article['url']}"
             self.client.create_tweet(text=tweet_text)
             self.posted[article['hash']] = datetime.now().isoformat()
+            self.usage_data['writes'] += 1  # Track successful writes
             return True
         except tweepy.TweepyException as e:
             print(f"API Error: {str(e)}")
@@ -106,7 +122,7 @@ class NewsBot:
                 new_posts += 1
 
         self.save_history()
-        print(f"Successfully posted {new_posts} updates")
+        print(f"Posted {new_posts} updates (Total reads: {self.usage_data['reads']}, writes: {self.usage_data['writes']})")
 
 if __name__ == "__main__":
     import argparse
