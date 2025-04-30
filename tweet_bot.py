@@ -37,8 +37,7 @@ write_client = tweepy.Client(
     consumer_secret=os.getenv("API_SECRET"),
     access_token=os.getenv("ACCESS_TOKEN"),
     access_token_secret=os.getenv("ACCESS_SECRET"),
-    wait_on_rate_limit=True,
-    wait_on_rate_limit_notify=True
+    wait_on_rate_limit=True
 )
 
 # ===== CONTENT SOURCES =====
