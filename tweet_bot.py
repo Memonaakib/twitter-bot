@@ -15,14 +15,10 @@ from newspaper import Article
 from nltk.data import find
 from openai import OpenAI  # Import OpenAI directly
 # Unset any proxy envs to avoid the proxies kwarg issue
-os.environ.pop("HTTP_PROXY", None)
-os.environ.pop("HTTPS_PROXY", None)
+for proxy_var in ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']:
+    os.environ.pop(proxy_var, None)
 
-
-# Initialize OpenAI with the custom client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) # Force no proxies
-)
-# Set OpenAI API key directly
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def ensure_punkt():
     try:
