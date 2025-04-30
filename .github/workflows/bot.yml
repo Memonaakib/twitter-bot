@@ -8,6 +8,11 @@ on:
 jobs:
   tweet:
     runs-on: ubuntu-latest
+    env:
+      # Force unset all proxy variables
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      NO_PROXY: "*"
 
     steps:
       - uses: actions/checkout@v4
@@ -24,33 +29,27 @@ jobs:
             libxml2-dev \
             libxslt-dev \
             libffi-dev \
-            python3-dev \
-            python3-lxml
+            python3-dev
 
-      - name: Cache NLTK data
+      - name: Cache Python dependencies
         uses: actions/cache@v3
         with:
-          path: ~/.nltk_data
-          key: ${{ runner.os }}-nltk-punkt
+          path: |
+            ~/.cache/pip
+            ~/.nltk_data
+          key: ${{ runner.os }}-python-${{ hashFiles('requirements.txt') }}
           restore-keys: |
-            ${{ runner.os }}-nltk-
+            ${{ runner.os }}-python-
 
       - name: Install Python packages
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install --no-cache-dir -r requirements.txt
+          pip install "openai>=1.30.1" "httpx>=0.24.0" --force-reinstall
 
-      - name: Ensure punkt is installed
+      - name: Pre-download NLTK data
         run: |
-          python << 'EOF'
-          import os, nltk
-          nltk.data.path.append(os.path.expanduser('~/.nltk_data'))
-          from nltk.data import find
-          try:
-              find('tokenizers/punkt')
-          except LookupError:
-              nltk.download('punkt', quiet=True, download_dir=os.path.expanduser('~/.nltk_data'))
-          EOF
+          python -c "import nltk; nltk.download('punkt', download_dir='~/.nltk_data')"
 
       - name: Initialize usage tracker
         run: |
@@ -61,11 +60,11 @@ jobs:
       - name: Run Twitter Bot
         env:
           BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
-          API_KEY:       ${{ secrets.API_KEY }}
-          API_SECRET:    ${{ secrets.API_SECRET }}
-          ACCESS_TOKEN:  ${{ secrets.ACCESS_TOKEN }}
+          API_KEY: ${{ secrets.API_KEY }}
+          API_SECRET: ${{ secrets.API_SECRET }}
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          HTTP_PROXY:      ""
-          HTTPS_PROXY:     ""
-        run: python tweet_bot.py
+        run: |
+          python -c "import os; print('Proxy check:', os.environ.get('HTTP_PROXY'))"  # Debug
+          python tweet_bot.py || echo "Bot failed with exit code $?"
