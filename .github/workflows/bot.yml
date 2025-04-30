@@ -12,7 +12,7 @@ jobs:
     env:
       HTTP_PROXY: ""
       HTTPS_PROXY: ""
-      NLTK_DATA: ~/.nltk_data  # Add explicit path
+      NLTK_DATA: /home/runner/.nltk_data  # Changed to absolute path
 
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +31,24 @@ jobs:
             libffi-dev \
             python3-dev
 
+      - name: Create NLTK directory
+        run: mkdir -p /home/runner/.nltk_data
+
+      - name: Cache NLTK data
+        uses: actions/cache@v3
+        with:
+          path: /home/runner/.nltk_data
+          key: ${{ runner.os }}-nltk-${{ hashFiles('nltk_requirements.txt') }}-v2
+          restore-keys: |
+            ${{ runner.os }}-nltk-
+
+      - name: Download NLTK datasets
+        run: |
+          python -c "import nltk; nltk.download('punkt', download_dir='/home/runner/.nltk_data')"
+          python -c "import nltk; nltk.download('stopwords', download_dir='/home/runner/.nltk_data')"
+          echo "NLTK data downloaded:"
+          ls -la /home/runner/.nltk_data
+
       - name: Cache pip packages
         uses: actions/cache@v3
         with:
@@ -39,23 +57,17 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Cache NLTK data
-        uses: actions/cache@v3
-        with:
-          path: ~/.nltk_data
-          key: ${{ runner.os }}-nltk-${{ hashFiles('nltk_requirements.txt') }}  # Better key
-
       - name: Install Python packages
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Pre-download NLTK data
-        if: steps.cache-nltk.outputs.cache-hit != 'true'
+      - name: Verify NLTK setup
         run: |
-          mkdir -p ~/.nltk_data  # Ensure directory exists
-          python -c "import nltk; nltk.download('punkt', download_dir='$HOME/.nltk_data')"
-          python -c "import nltk; nltk.download('stopwords', download_dir='$HOME/.nltk_data')"
+          echo "NLTK search paths:"
+          python -c "import nltk; print(nltk.data.path)"
+          echo "Contents of NLTK data directory:"
+          ls -la /home/runner/.nltk_data
 
       - name: Run Twitter Bot with Timeout
         env:
@@ -64,9 +76,6 @@ jobs:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
         run: |
-          # Add path verification
-          echo "NLTK data path: $NLTK_DATA"
-          ls -la $NLTK_DATA
           timeout 25m python tweet_bot.py || echo "Bot completed with exit code $?"
 
       - name: Post-cache cleanup
