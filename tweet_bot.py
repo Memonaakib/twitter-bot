@@ -9,7 +9,6 @@ import feedparser
 from newspaper import Article
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
-import nltk
 # Configuration
 HISTORY_FILE = "usage.json"  # Changed to use usage.json
 CACHE_HOURS = 24
@@ -17,7 +16,7 @@ VIRAL_KEYWORDS = ['viral', 'breaking', 'outbreak', 'surge', 'alert', 'exclusive'
 
 # Add at the top of NewsBot __init__:
 import nltk
-nltk.data.path.append(os.path.expanduser("~/.nltk_data"))
+nltk.data.path.append('/home/runner/.nltk_data')
 class NewsBot:
     def __init__(self):
         self.client = tweepy.Client(
