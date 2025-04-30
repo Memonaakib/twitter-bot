@@ -45,27 +45,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
-          pip install "openai>=1.30.1" "httpx>=0.24.0" --force-reinstall
 
       - name: Pre-download NLTK data
         run: |
           python -c "import nltk; nltk.download('punkt', download_dir='~/.nltk_data')"
 
-      - name: Initialize usage tracker
-        run: |
-          if [ ! -f usage.json ]; then
-            echo '{"reads":0,"writes":0}' > usage.json
-          fi
-
       - name: Run Twitter Bot
         env:
-          DEEPINFRA_API_KEY: ${{ secrets.DEEPINFRA_API_KEY }}
-          BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
           API_KEY: ${{ secrets.API_KEY }}
           API_SECRET: ${{ secrets.API_SECRET }}
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python -c "import os; print('Proxy check:', os.environ.get('HTTP_PROXY'))"  # Debug
-          python tweet_bot.py || echo "Bot failed with exit code $?"
+          python tweet_bot.py || echo "Bot run completed with exit code $?"
