@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import nltk
 import re
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
@@ -16,7 +17,7 @@ VIRAL_KEYWORDS = ['viral', 'breaking', 'outbreak', 'surge', 'alert', 'exclusive'
 
 # Add at the top of NewsBot __init__:
 import nltk
-nltk.data.path.append('/home/runner/.nltk_data')
+nltk.data.path = ['/home/runner/nltk_data'] + nltk.data.path
 class NewsBot:
     def __init__(self):
         self.client = tweepy.Client(
