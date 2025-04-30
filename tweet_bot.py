@@ -1,174 +1,119 @@
-import tweepy
-import feedparser
-import requests
-from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
+import hashlib
+import json
 import os
 import re
-import time
-import random
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
+import tweepy
+import feedparser
+from newspaper import Article
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
 
-# ===== CONFIGURATION =====
-TRENDING_KEYWORDS = {
-    'india-pakistan': ['border', 'kashmir', 'diplomacy', 'talks', 'conflict'],
-    'global-crisis': ['war', 'sanctions', 'summit', 'crisis'],
-    'economic': ['inflation', 'market', 'GDP', 'trade']
-}
+# Configuration
+HISTORY_FILE = "posted.json"
+CACHE_HOURS = 24
+VIRAL_KEYWORDS = ['viral', 'breaking', 'outbreak', 'surge', 'alert', 'exclusive']
 
-NEWS_SOURCES = [
-    {
-        'name': 'Reuters',
-        'rss': 'http://feeds.reuters.com/reuters/topNews',
-        'weight': 1.2,
-        'attribution': 'Source: Reuters'
-    },
-    {
-        'name': 'BBC',
-        'rss': 'http://feeds.bbci.co.uk/news/world/asia/india/rss.xml',
-        'weight': 1.1,
-        'attribution': 'Source: BBC'
-    }
-]
-
-# ===== TWITTER CLIENT =====
-def initialize_twitter_client():
-    return tweepy.Client(
-        consumer_key=os.getenv("API_KEY"),
-        consumer_secret=os.getenv("API_SECRET"),
-        access_token=os.getenv("ACCESS_TOKEN"),
-        access_token_secret=os.getenv("ACCESS_SECRET"),
-        wait_on_rate_limit=True
-    )
-
-# ===== CONTENT PROCESSING =====
-class ContentProcessor:
+class NewsBot:
     def __init__(self):
-        self.trending_phrases = self.get_google_trends()
-        
-    def get_google_trends(self):
-        """Fetch current trending search terms"""
-        try:
-            response = requests.get(
-                "https://trends.google.com/trends/api/dailytrends?geo=IN",
-                timeout=10
-            )
-            data = response.json()
-            return [t['title']['query'].lower() 
-                    for t in data['default']['trendingSearchesDays'][0]['trendingSearches']][:5]
-        except Exception as e:
-            print(f"Trend fetch error: {str(e)}")
-            return []
-
-    def calculate_virality(self, article):
-        """Score article based on multiple factors"""
-        score = 0
-        content = f"{article['title']} {article.get('summary', '')}".lower()
-        
-        # Trending keywords match
-        for category, keywords in TRENDING_KEYWORDS.items():
-            score += sum(content.count(kw) * 10 for kw in keywords)
-            
-        # Google Trends match
-        score += sum(content.count(trend) * 20 for trend in self.trending_phrases)
-        
-        # Freshness score (last 6 hours)
-        if (datetime.now() - article['published']).seconds < 21600:
-            score *= 1.5
-            
-        # Source credibility
-        score *= article['source']['weight']
-        
-        return score
-
-# ===== NEWS HANDLING =====
-def fetch_news():
-    processor = ContentProcessor()
-    articles = []
-    
-    for source in NEWS_SOURCES:
-        try:
-            feed = feedparser.parse(source['rss'])
-            for entry in feed.entries[:15]:  # Latest 15 articles
-                articles.append({
-                    'title': entry.title,
-                    'summary': entry.get('description', ''),
-                    'link': entry.link,
-                    'published': datetime(*entry.published_parsed[:6]),
-                    'source': source
-                })
-        except Exception as e:
-            print(f"Failed to process {source['name']}: {str(e)}")
-    
-    # Score and select top articles
-    for article in articles:
-        article['score'] = processor.calculate_virality(article)
-        
-    return sorted(articles, key=lambda x: x['score'], reverse=True)[:3]
-
-def create_tweet_content(article):
-    """Generate compliant tweet with key points"""
-    try:
-        # Extract main points
-        key_points = extract_key_points(article['link'])
-        
-        # Build tweet structure
-        tweet = f"🚨 {article['title']}\n\n"
-        tweet += f"📌 Key Developments:\n{key_points}\n\n"
-        tweet += f"{article['source']['attribution']} 🔗 {article['link']}"
-        
-        return tweet[:280]
-    
-    except Exception as e:
-        print(f"Content creation error: {str(e)}")
-        return f"📢 Breaking: {article['title']} 🔗 {article['link']}"
-
-def extract_key_points(url):
-    """Safe content extraction from article"""
-    try:
-        response = requests.get(url, timeout=15)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Focus on article body
-        body = soup.find('article') or soup.find('div', class_=re.compile('content|body'))
-        paragraphs = [p.get_text().strip() for p in body.find_all('p')] if body else []
-        
-        # Select impactful sentences
-        key_points = [
-            p for p in paragraphs 
-            if 50 < len(p) < 200 and 
-            any(kw in p.lower() for kw in ['important', 'critical', 'announced', 'confirmed'])
-        ][:3]
-        
-        return '\n'.join(key_points)[:180] + '...'
-    
-    except Exception as e:
-        print(f"Content extraction failed: {str(e)}")
-        return "Key details currently emerging..."
-
-# ===== MAIN EXECUTION =====
-def execute_bot():
-    client = initialize_twitter_client()
-    
-    try:
-        articles = fetch_news()
-        if not articles:
-            raise ValueError("No trending articles found")
-            
-        tweet = create_tweet_content(articles[0])
-        response = client.create_tweet(text=tweet)
-        
-        if response.errors:
-            print(f"Twitter API error: {response.errors[0]['detail']}")
-        else:
-            print(f"✅ Successfully posted at {datetime.now()}")
-            
-    except Exception as e:
-        print(f"❌ Critical failure: {str(e)}")
-        # Emergency fallback
-        client.create_tweet(
-            text="⚠️ Breaking news update delayed - stay tuned for updates! #NewsAlert"
+        self.client = tweepy.Client(
+            consumer_key=os.getenv("API_KEY"),
+            consumer_secret=os.getenv("API_SECRET"),
+            access_token=os.getenv("ACCESS_TOKEN"),
+            access_token_secret=os.getenv("ACCESS_SECRET"),
+            wait_on_rate_limit=True
         )
+        self.posted = self.load_history()
+        self.stop_words = set(stopwords.words('english'))
+
+    def load_history(self):
+        try:
+            with open(HISTORY_FILE, 'r') as f:
+                data = json.load(f)
+                # Auto-clear old entries
+                return {k:v for k,v in data.items() 
+                       if datetime.fromisoformat(v) > datetime.now() - timedelta(hours=CACHE_HOURS)}
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def save_history(self):
+        with open(HISTORY_FILE, 'w') as f:
+            json.dump(self.posted, f)
+
+    def content_hash(self, content):
+        return hashlib.md5(content.encode()).hexdigest()
+
+    def clean_text(self, text):
+        tokens = word_tokenize(text.lower())
+        return ' '.join([t for t in tokens if t.isalnum() and t not in self.stop_words])
+
+    def is_viral(self, title, content):
+        combined = f"{title} {self.clean_text(content)}"
+        return any(re.search(rf'\b{kw}\b', combined) for kw in VIRAL_KEYWORDS)
+
+    def process_feed(self, url):
+        feed = feedparser.parse(url)
+        return [entry.link for entry in feed.entries[:5]]
+
+    def analyze_article(self, url):
+        try:
+            article = Article(url, fetch_images=False, memoize_articles=True)
+            article.download()
+            article.parse()
+            
+            if not article.text or len(article.text) < 400:
+                return None
+                
+            return {
+                'title': article.title,
+                'content': article.text,
+                'url': url,
+                'hash': self.content_hash(article.title + self.clean_text(article.text)),
+                'viral': self.is_viral(article.title, article.text)
+            }
+        except Exception as e:
+            print(f"Error processing {url}: {str(e)}")
+            return None
+
+    def post_update(self, article):
+        if article['hash'] in self.posted:
+            return False
+
+        try:
+            prefix = "🔥 VIRAL: " if article['viral'] else "📰 Report: "
+            tweet_text = f"{prefix}{article['title']}\n\n{article['content'][:250]}...\n\nSource: {article['url']}"
+            self.client.create_tweet(text=tweet_text)
+            self.posted[article['hash']] = datetime.now().isoformat()
+            return True
+        except tweepy.TweepyException as e:
+            print(f"API Error: {str(e)}")
+            return False
+
+    def run(self, max_articles=5):
+        with open('sources.txt') as f:
+            sources = [line.strip() for line in f if line.strip()]
+
+        articles = []
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            feed_urls = [url for source in sources for url in self.process_feed(source)]
+            results = executor.map(self.analyze_article, feed_urls[:max_articles*2])
+            articles = [a for a in results if a]
+
+        new_posts = 0
+        for article in sorted(articles, key=lambda x: x['viral'], reverse=True)[:max_articles]:
+            if self.post_update(article):
+                new_posts += 1
+
+        self.save_history()
+        print(f"Successfully posted {new_posts} updates")
 
 if __name__ == "__main__":
-    execute_bot()
-    time.sleep(3600)  # 1 hour cooldown
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--max", type=int, default=5)
+    parser.add_argument("--min-length", type=int, default=400)
+    args = parser.parse_args()
+
+    bot = NewsBot()
+    bot.run(max_articles=args.max)
