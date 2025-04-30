@@ -8,6 +8,7 @@ import os
 import feedparser
 import nltk
 import ssl
+import httpx
 from bs4 import BeautifulSoup
 from readability import Document
 from newspaper import Article
@@ -17,9 +18,14 @@ from dotenv import load_dotenv
 # Unset any proxy envs to avoid the proxies kwarg issue
 os.environ.pop("HTTP_PROXY", None)
 os.environ.pop("HTTPS_PROXY", None)
+http_client = httpx.Client(proxies=None)  # Explicitly disable
 
+# Initialize OpenAI with the custom client
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    http_client=http_client  # Force no proxies
+)
 # Set OpenAI API key directly
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def ensure_punkt():
     try:
