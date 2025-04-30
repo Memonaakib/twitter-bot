@@ -14,16 +14,13 @@ from readability import Document
 from newspaper import Article
 from nltk.data import find
 from openai import OpenAI  # Import OpenAI directly
-from dotenv import load_dotenv
 # Unset any proxy envs to avoid the proxies kwarg issue
 os.environ.pop("HTTP_PROXY", None)
 os.environ.pop("HTTPS_PROXY", None)
-http_client = httpx.Client(proxies=None)  # Explicitly disable
+
 
 # Initialize OpenAI with the custom client
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    http_client=http_client  # Force no proxies
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) # Force no proxies
 )
 # Set OpenAI API key directly
 
