@@ -118,25 +118,30 @@ DEEPINFRA_API_KEY = "your-api-key-here"  # Store in GitHub Secrets
 def summarize_text(text):
     try:
         response = requests.post(
-            "https://api.deepinfra.com/v1/openai/chat/completions",
+            "https://api.deepinfra.com/v1/inference/meta-llama/Llama-3-70b-chat-hf",
             headers={
-                "Authorization": f"Bearer {DEEPINFRA_API_KEY}",
+                "Authorization": f"Bearer {os.getenv('DEEPINFRA_API_KEY')}",
                 "Content-Type": "application/json"
             },
             json={
-                "model": "meta-llama/Llama-3-70b-chat-hf",  # Free model
-                "messages": [{
-                    "role": "user",
-                    "content": f"Summarize this in one engaging tweet with 3 little hashtags,you can also use hinglish for people to understanding (under 240 characters):\n\n{text[:3000]}"
-                }],
-                "max_tokens": 100
+                "input": f"Summarize this in one engaging tweet (under 240 characters):\n\n{text[:3000]}",
+                "max_length": 100
             },
-            timeout=10
+            timeout=15
         )
-        return response.json()["choices"][0]["message"]["content"]
+        data = response.json()
+        
+        # Proper response parsing for DeepInfra
+        if response.status_code == 200:
+            return data["results"][0]["generated_text"].split("\n")[0][:240]
+        else:
+            print(f"❌ DeepInfra API Error: {data.get('error', 'Unknown error')}")
+            
     except Exception as e:
-        print(f"❌ DeepInfra Error: {str(e)}")
-        return text[:140] + "..."  # Fallback truncation
+        print(f"❌ DeepInfra Connection Error: {str(e)}")
+    
+    # Fallback to simple truncation
+    return text[:140] + "[...]" if len(text) > 140 else text
 # ===== CONTENT GENERATION =====
 def get_news_content():
     """Generate news content from RSS feeds"""
