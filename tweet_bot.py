@@ -2,7 +2,6 @@ import tweepy
 import feedparser
 import requests
 from datetime import datetime, timedelta
-from collections import defaultdict
 from bs4 import BeautifulSoup
 import os
 import re
@@ -11,9 +10,9 @@ import random
 
 # ===== CONFIGURATION =====
 TRENDING_KEYWORDS = {
-    'conflict': ['border', 'clash', 'tension', 'diplomacy', 'talks'],
-    'economy': ['inflation', 'market', 'GDP', 'trade', 'currency'],
-    'disaster': ['earthquake', 'flood', 'cyclone', 'rescue', 'alert']
+    'india-pakistan': ['border', 'kashmir', 'diplomacy', 'talks', 'conflict'],
+    'global-crisis': ['war', 'sanctions', 'summit', 'crisis'],
+    'economic': ['inflation', 'market', 'GDP', 'trade']
 }
 
 NEWS_SOURCES = [
@@ -24,12 +23,6 @@ NEWS_SOURCES = [
         'attribution': 'Source: Reuters'
     },
     {
-        'name': 'Livemint',
-        'rss': 'https://www.livemint.com/rss/news',
-        'weight': 1.0,
-        'attribution': 'Source: Livemint'
-    },
-    {
         'name': 'BBC',
         'rss': 'http://feeds.bbci.co.uk/news/world/asia/india/rss.xml',
         'weight': 1.1,
@@ -38,7 +31,7 @@ NEWS_SOURCES = [
 ]
 
 # ===== TWITTER CLIENT =====
-def init_twitter_client():
+def initialize_twitter_client():
     return tweepy.Client(
         consumer_key=os.getenv("API_KEY"),
         consumer_secret=os.getenv("API_SECRET"),
@@ -47,37 +40,39 @@ def init_twitter_client():
         wait_on_rate_limit=True
     )
 
-# ===== VIRALITY ANALYSIS =====
-class ViralNewsDetector:
+# ===== CONTENT PROCESSING =====
+class ContentProcessor:
     def __init__(self):
-        self.trends = self.get_google_trends()
+        self.trending_phrases = self.get_google_trends()
         
     def get_google_trends(self):
+        """Fetch current trending search terms"""
         try:
             response = requests.get(
                 "https://trends.google.com/trends/api/dailytrends?geo=IN",
                 timeout=10
             )
+            data = response.json()
             return [t['title']['query'].lower() 
-                    for t in response.json()['default']['trendingSearchesDays'][0]['trendingSearches']][:5]
-        except:
+                    for t in data['default']['trendingSearchesDays'][0]['trendingSearches']][:5]
+        except Exception as e:
+            print(f"Trend fetch error: {str(e)}")
             return []
-    
-    def calculate_score(self, article):
+
+    def calculate_virality(self, article):
+        """Score article based on multiple factors"""
         score = 0
-        content = f"{article['title']} {article['summary']}".lower()
+        content = f"{article['title']} {article.get('summary', '')}".lower()
         
-        # Trend matching
-        for trend in self.trends:
-            if trend in content:
-                score += 50
-                
-        # Keyword matching
+        # Trending keywords match
         for category, keywords in TRENDING_KEYWORDS.items():
             score += sum(content.count(kw) * 10 for kw in keywords)
             
-        # Freshness score
-        if (datetime.now() - article['published']).seconds < 21600:  # 6 hours
+        # Google Trends match
+        score += sum(content.count(trend) * 20 for trend in self.trending_phrases)
+        
+        # Freshness score (last 6 hours)
+        if (datetime.now() - article['published']).seconds < 21600:
             score *= 1.5
             
         # Source credibility
@@ -85,15 +80,15 @@ class ViralNewsDetector:
         
         return score
 
-# ===== NEWS PROCESSING =====
-def fetch_articles():
-    detector = ViralNewsDetector()
+# ===== NEWS HANDLING =====
+def fetch_news():
+    processor = ContentProcessor()
     articles = []
     
     for source in NEWS_SOURCES:
         try:
             feed = feedparser.parse(source['rss'])
-            for entry in feed.entries[:10]:  # Only latest 10
+            for entry in feed.entries[:15]:  # Latest 15 articles
                 articles.append({
                     'title': entry.title,
                     'summary': entry.get('description', ''),
@@ -102,64 +97,78 @@ def fetch_articles():
                     'source': source
                 })
         except Exception as e:
-            print(f"Failed to fetch {source['name']}: {str(e)}")
+            print(f"Failed to process {source['name']}: {str(e)}")
     
-    # Score and sort articles
+    # Score and select top articles
     for article in articles:
-        article['score'] = detector.calculate_score(article)
+        article['score'] = processor.calculate_virality(article)
         
-    return sorted(articles, key=lambda x: x['score'], reverse=True)[:5]
+    return sorted(articles, key=lambda x: x['score'], reverse=True)[:3]
 
-def format_article(article):
-    """Create compliant tweet with attribution"""
+def create_tweet_content(article):
+    """Generate compliant tweet with key points"""
     try:
-        text = f"🚨 {article['title']}\n\n"
-        text += f"📌 Key points:\n{extract_key_points(article['link'])}\n\n"
-        text += f"{article['source']['attribution']} 🔗 {article['link']}"
-        return text[:280]
-    except:
-        return f"📢 Breaking news update 🔗 {article['link']}"
+        # Extract main points
+        key_points = extract_key_points(article['link'])
+        
+        # Build tweet structure
+        tweet = f"🚨 {article['title']}\n\n"
+        tweet += f"📌 Key Developments:\n{key_points}\n\n"
+        tweet += f"{article['source']['attribution']} 🔗 {article['link']}"
+        
+        return tweet[:280]
+    
+    except Exception as e:
+        print(f"Content creation error: {str(e)}")
+        return f"📢 Breaking: {article['title']} 🔗 {article['link']}"
 
 def extract_key_points(url):
-    """Safe content extraction"""
+    """Safe content extraction from article"""
     try:
         response = requests.get(url, timeout=15)
         soup = BeautifulSoup(response.text, 'html.parser')
         
         # Focus on article body
-        body = soup.find('article') or soup.find('div', class_=re.compile('body'))
+        body = soup.find('article') or soup.find('div', class_=re.compile('content|body'))
         paragraphs = [p.get_text().strip() for p in body.find_all('p')] if body else []
         
-        # Select key sentences
-        key_points = [p for p in paragraphs if 50 < len(p) < 200][:3]
+        # Select impactful sentences
+        key_points = [
+            p for p in paragraphs 
+            if 50 < len(p) < 200 and 
+            any(kw in p.lower() for kw in ['important', 'critical', 'announced', 'confirmed'])
+        ][:3]
+        
         return '\n'.join(key_points)[:180] + '...'
-    except:
-        return "Important developments unfolding..."
+    
+    except Exception as e:
+        print(f"Content extraction failed: {str(e)}")
+        return "Key details currently emerging..."
 
 # ===== MAIN EXECUTION =====
-def post_viral_update():
-    client = init_twitter_client()
+def execute_bot():
+    client = initialize_twitter_client()
     
     try:
-        articles = fetch_articles()
+        articles = fetch_news()
         if not articles:
-            raise ValueError("No articles found")
+            raise ValueError("No trending articles found")
             
-        tweet = format_article(articles[0])
+        tweet = create_tweet_content(articles[0])
         response = client.create_tweet(text=tweet)
         
         if response.errors:
-            print(f"Twitter error: {response.errors[0]['detail']}")
+            print(f"Twitter API error: {response.errors[0]['detail']}")
         else:
-            print(f"✅ Posted viral update: {tweet[:60]}...")
+            print(f"✅ Successfully posted at {datetime.now()}")
             
     except Exception as e:
-        print(f"❌ Critical error: {str(e)}")
-        # Fallback tweet
+        print(f"❌ Critical failure: {str(e)}")
+        # Emergency fallback
         client.create_tweet(
-            text="⚠️ Breaking news update delayed. Stay tuned! #NewsAlert"
+            text="⚠️ Breaking news update delayed - stay tuned for updates! #NewsAlert"
         )
 
 if __name__ == "__main__":
-    post_viral_update()
-    time.sleep(3600)  # 1 hour between runs
+    execute_bot()
+    time.sleep(3600)  # 1 hour cooldown
