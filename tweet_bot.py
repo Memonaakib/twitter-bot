@@ -9,7 +9,7 @@ import feedparser
 from newspaper import Article
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
-
+import nltk
 # Configuration
 HISTORY_FILE = "usage.json"  # Changed to use usage.json
 CACHE_HOURS = 24
