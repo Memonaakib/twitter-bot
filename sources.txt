@@ -1,0 +1,5 @@
+https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best
+https://www.reuters.com/arc/outboundfeeds/rss/?outputType=collection&id=VIRAL
+https://www.livemint.com/rss/news
+https://www.livemint.com/rss/markets
+https://www.bbc.com/news/world/asia/rss.xml
