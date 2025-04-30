@@ -3,84 +3,68 @@ import requests
 import random
 import time
 from datetime import datetime
-import json
 import os
 import feedparser
 import nltk
 import ssl
-import httpx
 from bs4 import BeautifulSoup
 from readability import Document
 from newspaper import Article
 from nltk.data import find
-import requests
-# Unset any proxy envs to avoid the proxies kwarg issue
+
+# ===== INITIAL SETUP =====
+# Unset proxy variables
 for proxy_var in ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']:
     os.environ.pop(proxy_var, None)
 
-
-
+# NLTK setup
 def ensure_punkt():
     try:
         find('tokenizers/punkt')
     except LookupError:
         nltk.download('punkt', quiet=True, download_dir=os.path.expanduser('~/.nltk_data'))
 
-# Set NLTK data path so both local runs and CI use the same cache
 nltk.data.path.append(os.path.expanduser('~/.nltk_data'))
-
-# Only downloads once (or if truly missing)
 ensure_punkt()
 
 # ===== API CONFIGURATION =====
-BEARER_TOKEN = os.getenv("BEARER_TOKEN")
-API_KEY = os.getenv("API_KEY")
-API_SECRET = os.getenv("API_SECRET")
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
-ACCESS_SECRET = os.getenv("ACCESS_SECRET")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
 # Initialize Twitter clients
-read_client = tweepy.Client(bearer_token=BEARER_TOKEN)
 write_client = tweepy.Client(
-    consumer_key=API_KEY,
-    consumer_secret=API_SECRET,
-    access_token=ACCESS_TOKEN,
-    access_token_secret=ACCESS_SECRET
+    consumer_key=os.getenv("API_KEY"),
+    consumer_secret=os.getenv("API_SECRET"),
+    access_token=os.getenv("ACCESS_TOKEN"),
+    access_token_secret=os.getenv("ACCESS_SECRET"),
+    wait_on_rate_limit=True
 )
-
-# ===== USAGE TRACKER =====
-class UsageTracker:
-    def __init__(self):
-        self.reads = 0
-        self.writes = 0
-        
-    def log_read(self, count=1):
-        self.reads += count
-        
-    def log_write(self):
-        self.writes += 1
-        
-    def get_usage(self):
-        return {"reads": self.reads, "writes": self.writes}
-
-tracker = UsageTracker()
 
 # ===== CONTENT SOURCES =====
 RSS_FEEDS = [
     "http://feeds.bbci.co.uk/news/rss.xml",
     "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
     "https://www.aljazeera.com/xml/rss/all.xml",
-    "https://feeds.npr.org/1001/rss.xml",
-    "https://www.reutersagency.com/feed/?best-topics=business&post_type=best"
+    "https://feeds.npr.org/1001/rss.xml"
 ]
 
-# ===== CONTENT PROCESSING =====
 USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1'
 ]
 
+CURIOSITY_PROMPTS = [
+    "Did you know? The average cloud weighs about 1.1 million pounds! ☁️ #FunFact",
+    "Question of the day: What's one skill you wish you learned earlier in life? 🤔 #DailyThought",
+    "Mind-blowing fact: Bananas are berries, but strawberries aren't! 🍌 #FoodScience",
+    "Conversation starter: What's your favorite 'useless' fact? 💭 #TriviaTime",
+    "Nature fact: A single oak tree can produce about 10 million acorns in its lifetime! 🌳 #NatureWonders","Did you know? The average person spends 6 months of their life waiting for red lights to turn green. 🚦 #FunFact",
+    "Question of the day: If you could instantly master any skill, what would it be? 🤔 #DailyThought",
+    "Mind-blowing fact: Honey never spoils. Archaeologists have found edible honey in ancient Egyptian tombs! 🍯 #WowFact",
+    "Conversation starter: What's one thing you believed as a child that turned out to be completely wrong? 👶 #Throwback",
+    "Fascinating science: Octopuses have three hearts and blue blood! 🐙 #NatureIsAmazing",
+    "Thought experiment: If you could have dinner with any historical figure, who would it be? ⏳ #TimeTravel",
+    "Amazing nature fact: A single teaspoon of soil contains more microorganisms than there are people on Earth! 🌱 #Science"
+]
+
+# ===== CONTENT PROCESSING =====
 def extract_full_text(url):
     """Extract article text with multiple fallback methods"""
     try:
@@ -89,15 +73,20 @@ def extract_full_text(url):
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
 
-        # First try: newspaper3k
+        # Try newspaper3k first
         article = Article(url, language='en')
         article.download()
         article.parse()
         if len(article.text) > 300:
             return article.text
             
-        # Fallback 1: BeautifulSoup
-        response = requests.get(url, headers={'User-Agent': random.choice(USER_AGENTS)}, verify=False, timeout=15,cert=ssl_context)
+        # Fallback to BeautifulSoup
+        response = requests.get(
+            url,
+            headers={'User-Agent': random.choice(USER_AGENTS)},
+            verify=False,
+            timeout=15
+        )
         soup = BeautifulSoup(response.text, 'lxml')
         for element in soup(['script', 'style', 'nav', 'footer']):
             element.decompose()
@@ -105,7 +94,7 @@ def extract_full_text(url):
         if len(text) > 300:
             return text
             
-        # Fallback 2: readability
+        # Final fallback to readability
         doc = Document(response.text)
         return doc.summary()
         
@@ -113,102 +102,62 @@ def extract_full_text(url):
         print(f"❌ Extraction failed: {str(e)}")
         return None
 
-DEEPINFRA_API_KEY = "your-api-key-here"  # Store in GitHub Secrets
-
 def summarize_text(text):
-    try:
-        response = requests.post(
-            "https://api.deepinfra.com/v1/inference/meta-llama/Llama-3-70b-chat-hf",
-            headers={
-                "Authorization": f"Bearer {os.getenv('DEEPINFRA_API_KEY')}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "input": f"Summarize this in one engaging tweet (under 240 characters):\n\n{text[:3000]}",
-                "max_length": 100
-            },
-            timeout=15
-        )
-        data = response.json()
-        
-        # Proper response parsing for DeepInfra
-        if response.status_code == 200:
-            return data["results"][0]["generated_text"].split("\n")[0][:240]
-        else:
-            print(f"❌ DeepInfra API Error: {data.get('error', 'Unknown error')}")
-            
-    except Exception as e:
-        print(f"❌ DeepInfra Connection Error: {str(e)}")
-    
-    # Fallback to simple truncation
-    return text[:140] + "[...]" if len(text) > 140 else text
+    """Generate simple summary without external APIs"""
+    sentences = nltk.sent_tokenize(text)
+    if len(sentences) >= 2:
+        return f"{sentences[0]} {sentences[1]}"
+    return text[:140] + "..."
+
 # ===== CONTENT GENERATION =====
 def get_news_content():
-    """Generate news content from RSS feeds"""
+    """Generate news content with engaging fallbacks"""
     try:
         feed = feedparser.parse(random.choice(RSS_FEEDS))
         if not feed.entries:
-            return None
+            return random.choice(CURIOSITY_PROMPTS)
             
-        entry = random.choice(feed.entries)
+        entry = random.choice(feed.entries[:5])  # Only recent articles
         article_text = extract_full_text(entry.link)
         
-        if not article_text or len(article_text) < 300:
-            return None
-            
-        summary = summarize_text(article_text)
-        if not summary:
-            return None
-            
-        return f"📰 {summary}\n\n🔗 {entry.link} #News #AI"
+        if article_text and len(article_text) >= 300:
+            summary = summarize_text(article_text)
+            if summary:
+                return f"📰 {summary}\n\n🔗 {entry.link} #News"
+        
+        # Fallback to engaging content
+        prompt = random.choice(CURIOSITY_PROMPTS)
+        if entry:
+            return f"{prompt}\n\n📚 Read more: {entry.link}"
+        return prompt
         
     except Exception as e:
-        print(f"❌ News Error: {str(e)}")
-        return None
+        print(f"❌ Content Error: {str(e)}")
+        return random.choice(CURIOSITY_PROMPTS)
 
 # ===== POSTING ENGINE =====        
 def post_tweet():
     """Main posting function with error handling"""
     try:
-        if tracker.get_usage()['writes'] >= 495:
-            print("⚠️ Monthly write limit reached")
-            return
-            
-        content = None
-        attempts = 0
+        content = get_news_content()
         
-        # Attempt to generate content
-        while not content and attempts < 3:
-            content = get_news_content()
-            attempts += 1
-            time.sleep(1)
-            
-        # Fallback content
-        if not content:
-            content = "🌟 Stay curious! More insights coming soon. #Knowledge #AI"
-        else:
-            max_length = 280 - len(" #Breaking")
-            content = f"{content[:max_length-3]}... #Breaking"
-            
-        # Attempt to post
-        retries = 0
-        while retries < 3:
+        # Ensure proper length
+        content = content[:275] + ("..." if len(content) > 275 else "")
+        
+        # Post with rate limit handling
+        for retry in range(3):
             try:
                 write_client.create_tweet(text=content)
-                tracker.log_write()
                 print(f"✅ Posted at {datetime.now()}: {content[:60]}...")
                 break
             except tweepy.TweepyException as e:
-                print(f"🚨 Post Failed: {str(e)}")
-                time.sleep((10 * (2 ** retries)))
-                retries += 1
-                
-        # Update usage
-        with open("usage.json", "w") as f:
-            json.dump(tracker.get_usage(), f)
+                wait_time = (10 * (2 ** retry))
+                print(f"🚨 Post Failed: {str(e)}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
 
     except Exception as e:
         print(f"❗ Critical Error: {str(e)}")
 
 if __name__ == "__main__":
     post_tweet()
+    time.sleep(300)  # 5 minute delay between runs
