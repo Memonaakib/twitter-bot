@@ -20,6 +20,13 @@ import nltk
 nltk.data.path = ['/home/runner/nltk_data'] + nltk.data.path
 class NewsBot:
     def __init__(self):
+        nltk.data.path = ['/home/runner/nltk_data'] + nltk.data.path  # Ensure this is inside the class or script
+        try:
+            self.stop_words = set(stopwords.words('english'))
+        except LookupError:
+            nltk.download('stopwords', download_dir='/home/runner/nltk_data')
+            self.stop_words = set(stopwords.words('english'))
+
         self.client = tweepy.Client(
             consumer_key=os.getenv("API_KEY"),
             consumer_secret=os.getenv("API_SECRET"),
@@ -27,10 +34,10 @@ class NewsBot:
             access_token_secret=os.getenv("ACCESS_SECRET"),
             wait_on_rate_limit=True
         )
+
         self.usage_data = self.load_history()
         self.posted = self.usage_data.get('posted', {})
-        self.stop_words = set(stopwords.words('english'))
-        
+
         # Update read count
         self.usage_data['reads'] = self.usage_data.get('reads', 0) + 1
 
