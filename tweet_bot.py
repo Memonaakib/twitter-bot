@@ -13,12 +13,12 @@ from bs4 import BeautifulSoup
 from readability import Document
 from newspaper import Article
 from nltk.data import find
-from openai import OpenAI  # Import OpenAI directly
+ # Import OpenAI directly
 # Unset any proxy envs to avoid the proxies kwarg issue
 for proxy_var in ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']:
     os.environ.pop(proxy_var, None)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 
 def ensure_punkt():
     try:
@@ -113,23 +113,30 @@ def extract_full_text(url):
         print(f"❌ Extraction failed: {str(e)}")
         return None
 
-def summarize_text(text):
-    """Generate AI summary using OpenAI"""
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{
-                "role": "user",
-                "content": f"Summarize this in 2 short lines ,you can use hinglish, engaging sentences:\n\n{text[:3000]}"
-            }],
-            temperature=0.7,
-            max_tokens=150
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"❌ Summarization error: {str(e)}")
-        return None
+DEEPINFRA_API_KEY = "your-api-key-here"  # Store in GitHub Secrets
 
+def summarize_text(text):
+    try:
+        response = requests.post(
+            "https://api.deepinfra.com/v1/openai/chat/completions",
+            headers={
+                "Authorization": f"Bearer {DEEPINFRA_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "meta-llama/Llama-3-70b-chat-hf",  # Free model
+                "messages": [{
+                    "role": "user",
+                    "content": f"Summarize this in one engaging tweet with 3 little hashtags,you can also use hinglish for people to understanding (under 240 characters):\n\n{text[:3000]}"
+                }],
+                "max_tokens": 100
+            },
+            timeout=10
+        )
+        return response.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"❌ DeepInfra Error: {str(e)}")
+        return text[:140] + "..."  # Fallback truncation
 # ===== CONTENT GENERATION =====
 def get_news_content():
     """Generate news content from RSS feeds"""
