@@ -1,38 +1,52 @@
+#!/usr/bin/env python3
 import os
 import time
 import json
 import hashlib
 import argparse
 import re
+import logging
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
+
 import tweepy
 import feedparser
 from newspaper import Article
 import nltk
 
-# CRITICAL - Must be at the very top before any NLTK imports
-nltk.data.path = ['/home/runner/nltk_data'] + nltk.data.path
+# ─── CRITICAL: Set NLTK_DATA path before any nltk.download() ─────────────────
+nltk_data_path = os.getenv("NLTK_DATA", "/home/runner/nltk_data")
+nltk.data.path.insert(0, nltk_data_path)
 
-# Now safe to import NLTK components
+# ─── Logging setup ─────────────────────────────────────────────────────────────
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s %(message)s",
+    level=logging.INFO,
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("NewsBot")
+
+# ─── Now safe to import NLTK corpora ──────────────────────────────────────────
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 
-# Configuration
+# ─── Configuration ─────────────────────────────────────────────────────────────
 HISTORY_FILE = "usage.json"
-CACHE_HOURS = 48  # Longer cache duration
+CACHE_HOURS = 48
 VIRAL_KEYWORDS = ['viral', 'breaking', 'outbreak', 'surge', 'alert', 'exclusive']
+
 
 class NewsBot:
     def __init__(self):
-        # Initialize NLTK with fallback download
+        logger.info("Initializing bot and loading stopwords…")
         try:
             self.stop_words = set(stopwords.words('english'))
         except LookupError:
-            nltk.download('stopwords', download_dir='/home/runner/nltk_data')
+            nltk.download('stopwords', download_dir=nltk_data_path, quiet=True)
             self.stop_words = set(stopwords.words('english'))
+        logger.info(f"Stopwords loaded: {len(self.stop_words)} words")
 
-        # Twitter client with enhanced rate limit handling
+        # Twitter API client
         self.client = tweepy.Client(
             bearer_token=os.getenv("BEARER_TOKEN"),
             consumer_key=os.getenv("API_KEY"),
@@ -40,30 +54,27 @@ class NewsBot:
             access_token=os.getenv("ACCESS_TOKEN"),
             access_token_secret=os.getenv("ACCESS_SECRET")
         )
-        
+
+        # Load or initialize history
         self.usage_data = self.load_history()
         self.posted = self.usage_data.get('posted', {})
         self.last_post_time = self.usage_data.get('last_post_time', 0)
+        self.min_post_interval = 7200  # 2 hours
         self.usage_data['reads'] = self.usage_data.get('reads', 0) + 1
-        self.min_post_interval = 7200  # 2 hours between posts
 
     def load_history(self):
         try:
             with open(HISTORY_FILE, 'r') as f:
                 data = json.load(f)
-                if 'posted' in data:
-                    data['posted'] = {
-                        k: v for k, v in data['posted'].items()
-                        if datetime.fromisoformat(v) > datetime.now() - timedelta(hours=CACHE_HOURS)
-                    }
-                return data
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {
-                'reads': 0,
-                'writes': 0,
-                'last_post_time': 0,
-                'posted': {}
+            # prune old entries
+            cutoff = datetime.now() - timedelta(hours=CACHE_HOURS)
+            data['posted'] = {
+                k: v for k, v in data.get('posted', {}).items()
+                if datetime.fromisoformat(v) > cutoff
             }
+            return data
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {'reads': 0, 'writes': 0, 'last_post_time': 0, 'posted': {}}
 
     def save_history(self):
         self.usage_data['posted'] = self.posted
@@ -71,118 +82,107 @@ class NewsBot:
         with open(HISTORY_FILE, 'w') as f:
             json.dump(self.usage_data, f, indent=2)
 
-    def content_hash(self, content):
+    @staticmethod
+    def content_hash(content: str) -> str:
         return hashlib.md5(content.encode()).hexdigest()
 
-    def clean_text(self, text):
+    def clean_text(self, text: str) -> str:
         tokens = word_tokenize(text.lower())
         return ' '.join([t for t in tokens if t.isalnum() and t not in self.stop_words])
 
-    def is_viral(self, title, content):
+    def is_viral(self, title: str, content: str) -> bool:
         combined = f"{title} {self.clean_text(content)}"
         return any(re.search(rf'\b{kw}\b', combined) for kw in VIRAL_KEYWORDS)
 
-    def process_feed(self, url):
-        try:
-            feed = feedparser.parse(url)
-            return [entry.link for entry in feed.entries[:3]]  # Reduced from 5 to 3
-        except Exception as e:
-            print(f"⚠️ Feed error ({url}): {str(e)}")
-            return []
-
-    def process_feed_with_retry(self, url, retries=2):
-        for attempt in range(retries):
+    def process_feed_with_retry(self, url: str, retries: int = 2):
+        for attempt in range(1, retries + 1):
             try:
                 feed = feedparser.parse(url)
                 if feed.entries:
-                    return [entry.link for entry in feed.entries[:3]]
-                time.sleep(1)  # Wait before retry
+                    return [e.link for e in feed.entries[:3]]
             except Exception as e:
-                print(f"⚠️ Feed error attempt {attempt+1}/{retries} ({url}): {str(e)}")
+                logger.warning(f"Feed error ({attempt}/{retries}) at {url}: {e}")
+                time.sleep(1)
         return []
 
-    def analyze_article(self, url):
+    def analyze_article(self, url: str):
         try:
-            article = Article(url, fetch_images=False, memoize_articles=True)
-            article.download()
-            article.parse()
-            
-            # Add timeout handling
-            if not hasattr(article, 'text') or len(article.text) < 300:
+            art = Article(url, fetch_images=False, memoize_articles=True)
+            art.download()
+            art.parse()
+            if not hasattr(art, 'text') or len(art.text) < 300:
                 return None
-                
+            title, content = art.title, art.text
+            hash_ = self.content_hash(title + self.clean_text(content))
             return {
-                'title': article.title,
-                'content': article.text,
+                'title': title,
+                'content': content,
                 'url': url,
-                'hash': self.content_hash(article.title + self.clean_text(article.text)),
-                'viral': self.is_viral(article.title, article.text)
+                'hash': hash_,
+                'viral': self.is_viral(title, content)
             }
         except Exception as e:
-            print(f"⚠️ Article processing error ({url}): {str(e)}")
+            logger.warning(f"Article error at {url}: {e}")
             return None
 
-    def post_update(self, article):
-        current_time = time.time()
-        
-        # Enhanced rate limit check
-        if current_time - self.last_post_time < self.min_post_interval:
-            wait_time = self.min_post_interval - (current_time - self.last_post_time)
-            print(f"⏳ Rate limit cooldown: {wait_time/60:.1f} minutes remaining")
+    def post_update(self, article: dict) -> bool:
+        now = time.time()
+        # rate‐limit check
+        if now - self.last_post_time < self.min_post_interval:
+            remaining = (self.min_post_interval - (now - self.last_post_time)) / 60
+            logger.info(f"Cooldown: {remaining:.1f} min left before next post")
             return False
-
         if article['hash'] in self.posted:
-            print(f"⏩ Skipping duplicate: {article['title'][:50]}...")
+            logger.info(f"Skipping duplicate: {article['title'][:50]}…")
             return False
 
+        prefix = "🔥 VIRAL: " if article['viral'] else "📰 Report: "
+        tweet = f"{prefix}{article['title']}\n\n{article['content'][:220]}...\n\nSource: {article['url']}"
         try:
-            prefix = "🔥 VIRAL: " if article['viral'] else "📰 Report: "
-            tweet_text = f"{prefix}{article['title']}\n\n{article['content'][:220]}...\n\nSource: {article['url']}"
-            
-            response = self.client.create_tweet(text=tweet_text)
+            resp = self.client.create_tweet(text=tweet)
             self.posted[article['hash']] = datetime.now().isoformat()
             self.usage_data['writes'] = self.usage_data.get('writes', 0) + 1
-            self.last_post_time = current_time
-            
-            print(f"✅ Posted: {article['title'][:60]}... (ID: {response.data['id']})")
+            self.last_post_time = now
+            logger.info(f"Posted: {article['title'][:60]}… (ID {resp.data['id']})")
             return True
-            
         except tweepy.TweepyException as e:
-            print(f"❌ Twitter error: {str(e)}")
+            logger.error(f"Twitter error: {e}")
             if "Too Many Requests" in str(e):
-                time.sleep(3600)  # Wait 1 hour on rate limit
+                time.sleep(3600)
             return False
 
-    def run(self, max_posts=1):
-        print("\n=== Starting Bot ===")
-        print(f"Last post time: {datetime.fromtimestamp(self.last_post_time) if self.last_post_time else 'Never'}")
+    def run(self, max_posts: int = 1):
+        logger.info("=== Bot run started ===")
+        if self.last_post_time:
+            logger.info(f"Last post at: {datetime.fromtimestamp(self.last_post_time)}")
+        else:
+            logger.info("No previous posts")
 
         with open('sources.txt') as f:
-            sources = [line.strip() for line in f if line.strip()]
+            sources = [s.strip() for s in f if s.strip()]
 
-        articles = []
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            feed_urls = [url for source in sources for url in self.process_feed_with_retry(source)]
-            results = executor.map(self.analyze_article, feed_urls[:6])
-            articles = [a for a in results if a]
+        # Fetch and analyze
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            feeds = [link for src in sources for link in self.process_feed_with_retry(src)]
+            articles = filter(None, ex.map(self.analyze_article, feeds[:6]))
 
-        new_posts = 0
-        for article in sorted(articles, key=lambda x: x['viral'], reverse=True):
-            if self.post_update(article):
-                new_posts += 1
-                if new_posts >= max_posts:
+        # Sort by viral and post
+        new = 0
+        for art in sorted(articles, key=lambda x: x['viral'], reverse=True):
+            if self.post_update(art):
+                new += 1
+                if new >= max_posts:
                     break
 
         self.save_history()
-        print(f"\n=== Summary ===")
-        print(f"Posts this run: {new_posts}")
-        print(f"Total runs: {self.usage_data['reads']}")
-        print(f"Total posts: {self.usage_data['writes']}")
-        print("=================")
+        logger.info(f"Run summary: Posted {new}, Reads {self.usage_data['reads']}, Writes {self.usage_data['writes']}")
+        logger.info("=== Bot run complete ===\n")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--max-posts", type=int, default=1, help="Maximum posts per run (recommended: 1)")
+    parser.add_argument("--max-posts", type=int, default=1,
+                        help="Maximum posts per run (recommended: 1)")
     args = parser.parse_args()
 
     bot = NewsBot()
