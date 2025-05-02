@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import tweepy
 import feedparser
-from newspaper3k import Article
+from newspaper import Article
 import nltk
 
 # CRITICAL - Must be at the very top before any NLTK imports
