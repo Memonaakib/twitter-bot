@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import tweepy
 import feedparser
-from newspaper import Article
+from newspaper3k import Article
 import nltk
 
 # CRITICAL - Must be at the very top before any NLTK imports
@@ -99,24 +99,25 @@ class NewsBot:
             print(f"⚠️ Feed error attempt {attempt+1}/{retries} ({url}): {str(e)}")
     return []
     def analyze_article(self, url):
-        try:
-            article = Article(url, fetch_images=False, memoize_articles=True)
-            article.download()
-            article.parse()
-            
-            if not article.text or len(article.text) < 300:  # Reduced minimum length
-                return None
-                
-            return {
-                'title': article.title,
-                'content': article.text,
-                'url': url,
-                'hash': self.content_hash(article.title + self.clean_text(article.text)),
-                'viral': self.is_viral(article.title, article.text)
-            }
-        except Exception as e:
-            print(f"⚠️ Article error ({url}): {str(e)}")
+    try:
+        article = Article(url, fetch_images=False, memoize_articles=True)
+        article.download()
+        article.parse()
+        
+        # Add timeout handling
+        if not hasattr(article, 'text') or len(article.text) < 300:
             return None
+            
+        return {
+            'title': article.title,
+            'content': article.text,
+            'url': url,
+            'hash': self.content_hash(article.title + self.clean_text(article.text)),
+            'viral': self.is_viral(article.title, article.text)
+        }
+    except Exception as e:
+        print(f"⚠️ Article processing error ({url}): {str(e)}")
+        return None
 
     def post_update(self, article):
         current_time = time.time()
