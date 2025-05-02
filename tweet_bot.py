@@ -83,12 +83,21 @@ class NewsBot:
 
     def process_feed(self, url):
         try:
-            feed = feedparser.parse(url, timeout=10)
+            feed = feedparser.parse(url)
             return [entry.link for entry in feed.entries[:3]]  # Reduced from 5 to 3
         except Exception as e:
             print(f"⚠️ Feed error ({url}): {str(e)}")
             return []
-
+    def process_feed_with_retry(self, url, retries=2):
+    for attempt in range(retries):
+        try:
+            feed = feedparser.parse(url)
+            if feed.entries:
+                return [entry.link for entry in feed.entries[:3]]
+            time.sleep(1)  # Wait before retry
+        except Exception as e:
+            print(f"⚠️ Feed error attempt {attempt+1}/{retries} ({url}): {str(e)}")
+    return []
     def analyze_article(self, url):
         try:
             article = Article(url, fetch_images=False, memoize_articles=True)
@@ -149,7 +158,7 @@ class NewsBot:
 
         articles = []
         with ThreadPoolExecutor(max_workers=3) as executor:  # Reduced from 4 workers
-            feed_urls = [url for source in sources for url in self.process_feed(source)]
+            feed_urls = [url for source in sources for url in self.process_feed_with_retry(source)]
             results = executor.map(self.analyze_article, feed_urls[:6])  # Reduced from max_articles*2
             articles = [a for a in results if a]
 
