@@ -2,7 +2,7 @@ name: Geopolitical News Bot
 
 on:
   schedule:
-    - cron: "0 */2 * * *"  # Every 2 hours
+    - cron: "0 */2 * * *"   # every 2 hours
   workflow_dispatch:
 
 jobs:
@@ -15,47 +15,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      - name: Install system dependencies
+      - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y libxml2-dev libxslt-dev libffi-dev python3-dev
 
       - name: Install Python packages
         run: |
-          pip install --upgrade pip
-          pip install nltk==3.8.1
-          pip install tweepy==4.12.1  # Install NLTK first
-          pip install -r requirements.txt
-
-      - name: Create NLTK directory
-        run: |
-          mkdir -p /home/runner/nltk_data
-          echo "NLTK directory created"
-
-      - name: Download NLTK datasets
-        run: |
-          python -c "import nltk; nltk.download('punkt', download_dir='/home/runner/nltk_data')"
-          python -c "import nltk; nltk.download('stopwords', download_dir='/home/runner/nltk_data')"
-          echo "Download verification:"
-          ls -la /home/runner/nltk_data/corpora
+          python -m pip install --upgrade pip
+          pip install nltk==3.8.1 tweepy==4.12.1 newspaper3k feedparser
 
       - name: Cache NLTK data
         uses: actions/cache@v3
         with:
-          path: /home/runner/nltk_data
-          key: ${{ runner.os }}-nltk-${{ hashFiles('nltk_requirements.txt') }}-v4
+          path: ${{ env.NLTK_DATA }}
+          key: ${{ runner.os }}-nltk-${{ hashFiles('requirements.txt') }}-v2
           restore-keys: |
             ${{ runner.os }}-nltk-
 
+      - name: Download NLTK datasets (if missing)
+        if: steps.cache-nltk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "${{ env.NLTK_DATA }}"
+          python - <<EOF
+import nltk
+nltk.download('punkt', download_dir="${{ env.NLTK_DATA }}", quiet=True)
+nltk.download('stopwords', download_dir="${{ env.NLTK_DATA }}", quiet=True)
+EOF
+
       - name: Verify NLTK setup
         run: |
-          python -c "import nltk; print('NLTK paths:', nltk.data.path)"
-          python -c "from nltk.corpus import stopwords; print('Stopwords count:', len(stopwords.words('english')))"
+          python - <<EOF
+import nltk
+print("NLTK paths:", nltk.data.path)
+from nltk.corpus import stopwords
+print("Stopwords count:", len(stopwords.words('english')))
+EOF
 
       - name: Run Twitter Bot
         env:
@@ -65,4 +65,4 @@ jobs:
           ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
           BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
         run: |
-          timeout 18m python tweet_bot.py --max-posts 1 || echo "Bot completed with exit code $?"
+          timeout 18m python tweet_bot.py --max-posts 1 || echo "Bot exited with code $?"
