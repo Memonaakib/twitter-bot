@@ -31,6 +31,7 @@ jobs:
           pip install nltk==3.8.1 tweepy==4.12.1 newspaper3k feedparser
 
       - name: Cache NLTK data
+        id: cache-nltk                     # ← added this ID
         uses: actions/cache@v3
         with:
           path: ${{ env.NLTK_DATA }}
