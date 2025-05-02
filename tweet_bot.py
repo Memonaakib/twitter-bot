@@ -3,6 +3,7 @@ import time
 import json
 import hashlib
 import argparse
+import re
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import tweepy
@@ -88,36 +89,38 @@ class NewsBot:
         except Exception as e:
             print(f"⚠️ Feed error ({url}): {str(e)}")
             return []
+
     def process_feed_with_retry(self, url, retries=2):
-    for attempt in range(retries):
-        try:
-            feed = feedparser.parse(url)
-            if feed.entries:
-                return [entry.link for entry in feed.entries[:3]]
-            time.sleep(1)  # Wait before retry
-        except Exception as e:
-            print(f"⚠️ Feed error attempt {attempt+1}/{retries} ({url}): {str(e)}")
-    return []
+        for attempt in range(retries):
+            try:
+                feed = feedparser.parse(url)
+                if feed.entries:
+                    return [entry.link for entry in feed.entries[:3]]
+                time.sleep(1)  # Wait before retry
+            except Exception as e:
+                print(f"⚠️ Feed error attempt {attempt+1}/{retries} ({url}): {str(e)}")
+        return []
+
     def analyze_article(self, url):
-    try:
-        article = Article(url, fetch_images=False, memoize_articles=True)
-        article.download()
-        article.parse()
-        
-        # Add timeout handling
-        if not hasattr(article, 'text') or len(article.text) < 300:
-            return None
+        try:
+            article = Article(url, fetch_images=False, memoize_articles=True)
+            article.download()
+            article.parse()
             
-        return {
-            'title': article.title,
-            'content': article.text,
-            'url': url,
-            'hash': self.content_hash(article.title + self.clean_text(article.text)),
-            'viral': self.is_viral(article.title, article.text)
-        }
-    except Exception as e:
-        print(f"⚠️ Article processing error ({url}): {str(e)}")
-        return None
+            # Add timeout handling
+            if not hasattr(article, 'text') or len(article.text) < 300:
+                return None
+                
+            return {
+                'title': article.title,
+                'content': article.text,
+                'url': url,
+                'hash': self.content_hash(article.title + self.clean_text(article.text)),
+                'viral': self.is_viral(article.title, article.text)
+            }
+        except Exception as e:
+            print(f"⚠️ Article processing error ({url}): {str(e)}")
+            return None
 
     def post_update(self, article):
         current_time = time.time()
@@ -150,7 +153,7 @@ class NewsBot:
                 time.sleep(3600)  # Wait 1 hour on rate limit
             return False
 
-    def run(self, max_posts=1):  # Changed from max_articles to max_posts
+    def run(self, max_posts=1):
         print("\n=== Starting Bot ===")
         print(f"Last post time: {datetime.fromtimestamp(self.last_post_time) if self.last_post_time else 'Never'}")
 
@@ -158,9 +161,9 @@ class NewsBot:
             sources = [line.strip() for line in f if line.strip()]
 
         articles = []
-        with ThreadPoolExecutor(max_workers=3) as executor:  # Reduced from 4 workers
+        with ThreadPoolExecutor(max_workers=3) as executor:
             feed_urls = [url for source in sources for url in self.process_feed_with_retry(source)]
-            results = executor.map(self.analyze_article, feed_urls[:6])  # Reduced from max_articles*2
+            results = executor.map(self.analyze_article, feed_urls[:6])
             articles = [a for a in results if a]
 
         new_posts = 0
