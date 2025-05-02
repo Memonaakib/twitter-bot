@@ -2,7 +2,7 @@ name: Geopolitical News Bot
 
 on:
   schedule:
-    - cron: "0 */2 * * *"  # Run every 2 hours to prevent rate limiting
+    - cron: "0 */2 * * *"  # Every 2 hours
   workflow_dispatch:
 
 jobs:
@@ -11,7 +11,6 @@ jobs:
     timeout-minutes: 20
     env:
       NLTK_DATA: /home/runner/nltk_data
-      POST_LIMIT: 1  # Max tweets per run
 
     steps:
       - uses: actions/checkout@v4
@@ -21,46 +20,41 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Create NLTK directory structure
+      - name: Install system dependencies
         run: |
-          mkdir -p /home/runner/nltk_data/corpora
-          echo "NLTK directory created at:"
-          ls -la /home/runner/nltk_data
+          sudo apt-get update
+          sudo apt-get install -y libxml2-dev libxslt-dev libffi-dev python3-dev
+
+      - name: Install Python packages
+        run: |
+          pip install --upgrade pip
+          pip install nltk==3.8.1  # Install NLTK first
+          pip install -r requirements.txt
+
+      - name: Create NLTK directory
+        run: |
+          mkdir -p /home/runner/nltk_data
+          echo "NLTK directory created"
 
       - name: Download NLTK datasets
         run: |
-          python -m nltk.downloader -d /home/runner/nltk_data punkt stopwords
+          python -c "import nltk; nltk.download('punkt', download_dir='/home/runner/nltk_data')"
+          python -c "import nltk; nltk.download('stopwords', download_dir='/home/runner/nltk_data')"
           echo "Download verification:"
-          ls -la /home/runner/nltk_data/corpora/stopwords
+          ls -la /home/runner/nltk_data/corpora
 
       - name: Cache NLTK data
         uses: actions/cache@v3
         with:
           path: /home/runner/nltk_data
-          key: ${{ runner.os }}-nltk-${{ hashFiles('nltk_requirements.txt') }}-v3
+          key: ${{ runner.os }}-nltk-${{ hashFiles('nltk_requirements.txt') }}-v4
           restore-keys: |
             ${{ runner.os }}-nltk-
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libxml2-dev \
-            libxslt-dev \
-            libffi-dev \
-            python3-dev
-
-      - name: Install Python packages
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-
       - name: Verify NLTK setup
         run: |
-          echo "NLTK search paths:"
-          python -c "import nltk; print(nltk.data.path)"
-          echo "Stopwords verification:"
-          python -c "from nltk.corpus import stopwords; print('English stopwords loaded:', len(stopwords.words('english')))"
+          python -c "import nltk; print('NLTK paths:', nltk.data.path)"
+          python -c "from nltk.corpus import stopwords; print('Stopwords count:', len(stopwords.words('english')))"
 
       - name: Run Twitter Bot
         env:
@@ -70,4 +64,4 @@ jobs:
           ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
           BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
         run: |
-          timeout 18m python tweet_bot.py --max-posts $POST_LIMIT || echo "Bot completed with exit code $?"
+          timeout 18m python tweet_bot.py --max-posts 1 || echo "Bot completed with exit code $?"
