@@ -18,24 +18,24 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.11"  # Updated to newer Python version
+          python-version: "3.11"
 
       - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libxml2-dev libxslt-dev \
-            libffi-dev python3-dev \
-            libjpeg-dev zlib1g-dev  # Added for newspaper3k image processing
+            libffi-dev python3-dev python3.11-dev \
+            libjpeg-dev zlib1g-dev
 
       - name: Install Python packages
         run: |
-          python -m pip install --upgrade pip
-          pip install --no-cache-dir -r requirements.txt  # Use requirements file
+          python -m pip install --upgrade pip setuptools wheel
+          pip install --no-cache-dir -r requirements.txt
 
       - name: Cache NLTK data
         id: cache-nltk
-        uses: actions/cache@v4  # Upgraded cache action
+        uses: actions/cache@v4
         with:
           path: ${{ env.NLTK_DATA }}
           key: ${{ runner.os }}-nltk-${{ hashFiles('requirements.txt') }}-v3
@@ -47,28 +47,28 @@ jobs:
         run: |
           mkdir -p "${{ env.NLTK_DATA }}"
           python - <<EOF
-          import nltk
-          nltk.download('punkt', download_dir="${{ env.NLTK_DATA }}", quiet=True)
-          nltk.download('stopwords', download_dir="${{ env.NLTK_DATA }}", quiet=True)
-          nltk.download('wordnet', download_dir="${{ env.NLTK_DATA }}", quiet=True)  # Added
-          EOF
+import nltk
+nltk.download('punkt',    download_dir="${{ env.NLTK_DATA }}", quiet=True)
+nltk.download('stopwords',download_dir="${{ env.NLTK_DATA }}", quiet=True)
+nltk.download('wordnet',  download_dir="${{ env.NLTK_DATA }}", quiet=True)
+EOF
 
       - name: Verify NLTK setup
         run: |
           python - <<EOF
-          import nltk
-          from nltk.corpus import stopwords, wordnet
-          print("NLTK paths:", nltk.data.path)
-          print("Stopwords count:", len(stopwords.words('english')))
-          print("Wordnet entries:", len(wordnet.all_synsets()))
-          EOF
+import nltk
+from nltk.corpus import stopwords, wordnet
+print("NLTK paths:", nltk.data.path)
+print("Stopwords count:", len(stopwords.words('english')))
+print("WordNet synsets count:", len(list(wordnet.all_synsets())))
+EOF
 
       - name: Run Twitter Bot
         env:
-          API_KEY: ${{ secrets.API_KEY }}
-          API_SECRET: ${{ secrets.API_SECRET }}
-          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-          ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
-          BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
+          API_KEY:     ${{ secrets.API_KEY }}
+          API_SECRET:  ${{ secrets.API_SECRET }}
+          ACCESS_TOKEN:${{ secrets.ACCESS_TOKEN }}
+          ACCESS_SECRET:${{ secrets.ACCESS_SECRET }}
+          BEARER_TOKEN:${{ secrets.BEARER_TOKEN }}
         run: |
           timeout 19m python tweet_bot.py --max-posts 1 || exit $?
