@@ -1,40 +1,44 @@
-name: AI X Bot - Breaking News
+name: Twitter Bot
 
 on:
   schedule:
-    - cron: "*/15 * * * *"  # Every 15 minutes
+    - cron: "0 */2 * * *"  # Every 2 hours
   workflow_dispatch:
 
 jobs:
-  execute:
+  tweet:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
+    - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
 
-      - name: Initialize NLTK
-        run: |
-          mkdir -p /home/runner/nltk_data
-          python -c "import nltk; nltk.download('stopwords', download_dir='/home/runner/nltk_data')"
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libxml2-dev libxslt-dev libffi-dev python3-dev
 
-      - name: Run AI X Bot
-        env:
-          BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
-          API_KEY: ${{ secrets.API_KEY }}
-          API_SECRET: ${{ secrets.API_SECRET }}
-          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-          ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
-        run: |
-          
-          python bot.py
+    - name: Install Python packages
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Initialize NLTK Data
+      run: |
+        mkdir -p /home/runner/nltk_data
+        python -c "import nltk; nltk.download('punkt', download_dir='/home/runner/nltk_data')"
+        python -c "import nltk; nltk.download('stopwords', download_dir='/home/runner/nltk_data')"
+
+    - name: Run Twitter Bot
+      env:
+        API_KEY: ${{ secrets.API_KEY }}
+        API_SECRET: ${{ secrets.API_SECRET }}
+        ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
+      run: |
+        python tweet_bot.py --max-posts 1
