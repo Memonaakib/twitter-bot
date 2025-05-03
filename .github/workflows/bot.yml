@@ -19,9 +19,10 @@ jobs:
         python-version: "3.10"
 
     - name: Install dependencies
-  run: |
-    pip install -r requirements.txt
-    pip install lxml[html_clean]  # Add this line
+      run: |
+        pip install -r requirements.txt
+        pip install "lxml[html_clean]"  # Fixed with quotes
+
     - name: Initialize NLTK
       run: |
         mkdir -p /home/runner/nltk_data
