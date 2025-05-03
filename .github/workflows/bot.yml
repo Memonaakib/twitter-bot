@@ -21,7 +21,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install --upgrade pip
-        pip install tweepy==4.14.0 feedparser==6.0.10 newspaper3k==0.2.8 nltk==3.8.1 pip install lxml[html_clean
+        pip install tweepy==4.14.0 feedparser==6.0.10 newspaper3k==0.2.8 nltk==3.8.1 pip install lxml[html_clean]
 
     - name: Initialize NLTK
       run: |
