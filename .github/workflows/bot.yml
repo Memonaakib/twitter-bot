@@ -2,13 +2,13 @@ name: AI X Bot
 
 on:
   schedule:
-    - cron: "0 */2 * * *"  # Every 2 hours
+    - cron: "0 */3 * * *"  # Every 3 hours
   workflow_dispatch:
 
 jobs:
   execute:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
     - uses: actions/checkout@v4
@@ -18,23 +18,17 @@ jobs:
       with:
         python-version: "3.10"
 
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libxml2-dev libxslt-dev libffi-dev python3-dev
-
-    - name: Install Python packages
+    - name: Install dependencies
       run: |
         pip install --upgrade pip
-        pip install lxml==4.9.3 lxml-html-clean==0.1.1
-        pip install -r requirements.txt
+        pip install tweepy==4.14.0 feedparser==6.0.10 newspaper3k==0.2.8 nltk==3.8.1
 
     - name: Initialize NLTK
       run: |
         mkdir -p /home/runner/nltk_data
         python -c "import nltk; nltk.download('stopwords', download_dir='/home/runner/nltk_data')"
 
-    - name: Run AI X Bot
+    - name: Run Bot
       env:
         BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
         API_KEY: ${{ secrets.API_KEY }}
@@ -42,4 +36,4 @@ jobs:
         ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
         ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
       run: |
-        python tweet_bot.py --max-posts 1 --min-delay 300
+        python tweet_bot.py
