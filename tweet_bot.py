@@ -49,7 +49,7 @@ class AIXBot:
             access_token=os.getenv("ACCESS_TOKEN"),
             access_token_secret=os.getenv("ACCESS_SECRET"),
             wait_on_rate_limit=True,
-            wait_on_rate_limit_notify=True
+            
         )
         
         # Initialize NLP and history
