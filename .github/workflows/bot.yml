@@ -26,6 +26,7 @@ jobs:
     - name: Install Python packages
       run: |
         pip install --upgrade pip
+        pip install lxml==4.9.3 lxml-html-clean==0.1.1
         pip install -r requirements.txt
 
     - name: Initialize NLTK Data
