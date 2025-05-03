@@ -19,6 +19,8 @@ NLTK_DATA_PATH = "/home/runner/nltk_data"
 HISTORY_FILE = "usage.json"
 COUNTRIES = ['India', 'Pakistan', 'US', 'Gaza', 'Israel', 'China']
 BREAKING_KEYWORDS = ['breaking', 'urgent', 'crisis', 'attack', 'summit', 'deadly']
+MAX_POSTS = 1  # Default maximum posts per run
+MIN_DELAY = 300  # 5 minutes between posts in seconds
 
 # Initialize NLTK path
 nltk.data.path.insert(0, NLTK_DATA_PATH)
@@ -33,15 +35,24 @@ logging.basicConfig(
 logger = logging.getLogger("AI_X_Bot")
 
 class AIXBot:
-    def __init__(self):
-        """Initialize bot with proper history defaults"""
+    def __init__(self, max_posts=MAX_POSTS, min_delay=MIN_DELAY):
+        """Initialize bot with rate limit protection"""
+        self.max_posts = max_posts
+        self.min_delay = min_delay
+        self.retry_count = 0
+        
+        # Twitter client with rate limit handling
         self.client = tweepy.Client(
             bearer_token=os.getenv("BEARER_TOKEN"),
             consumer_key=os.getenv("API_KEY"),
             consumer_secret=os.getenv("API_SECRET"),
             access_token=os.getenv("ACCESS_TOKEN"),
-            access_token_secret=os.getenv("ACCESS_SECRET")
+            access_token_secret=os.getenv("ACCESS_SECRET"),
+            wait_on_rate_limit=True,
+            wait_on_rate_limit_notify=True
         )
+        
+        # Initialize NLP and history
         self._init_nltk()
         self.history = self._load_history()
 
@@ -59,7 +70,7 @@ class AIXBot:
             with open(HISTORY_FILE, 'r') as f:
                 history = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
-            history = {}
+            history = {'posts': {}, 'count': 0}
             
         # Ensure required structure
         history['posts'] = history.get('posts', {})
@@ -69,9 +80,9 @@ class AIXBot:
     def _is_breaking_news(self, title: str) -> bool:
         """Advanced breaking news detection"""
         title_lower = title.lower()
-        has_country = any(c.lower() in title_lower for c in COUNTRIES)
-        has_keyword = any(kw in title_lower for kw in BREAKING_KEYWORDS)
-        return has_country and has_keyword
+        country_check = any(c.lower() in title_lower for c in COUNTRIES)
+        keyword_check = any(kw in title_lower for kw in BREAKING_KEYWORDS)
+        return country_check and keyword_check
 
     def _process_feed(self, url: str):
         """Fetch and filter RSS feed with error handling"""
@@ -91,10 +102,6 @@ class AIXBot:
 
     def post_update(self, entry):
         """Post to Twitter with enhanced safety checks"""
-        # Initialize posts if missing
-        if 'posts' not in self.history:
-            self.history['posts'] = {}
-            
         content_hash = hashlib.md5(entry.title.encode()).hexdigest()
         
         if content_hash in self.history['posts']:
@@ -107,28 +114,44 @@ class AIXBot:
             self.history['posts'][content_hash] = datetime.now().isoformat()
             self.history['count'] += 1
             logger.info(f"Posted: {entry.title[:80]}... (ID: {response.data['id']})")
+            time.sleep(self.min_delay)  # Delay between posts
             return True
         except tweepy.TweepyException as e:
-            logger.error(f"Twitter API error: {str(e)}")
             if "Too Many Requests" in str(e):
-                logger.warning("Rate limit hit - sleeping for 1 hour")
-                time.sleep(3600)
+                wait_time = 60 * (2 ** self.retry_count)  # Exponential backoff
+                logger.warning(f"Rate limited - sleeping {wait_time} seconds")
+                time.sleep(wait_time)
+                self.retry_count += 1
+                return self.post_update(entry)  # Retry
+            logger.error(f"Twitter error: {str(e)}")
             return False
 
     def run(self):
-        """Main execution flow"""
+        """Main execution flow with rate limit checks"""
         logger.info("=== AI X BOT ACTIVATED ===")
         
+        # Rate limit pre-check
+        try:
+            limits = self.client.get_ratelimit_limits()
+            if limits.statuses.posts.remaining < self.max_posts:
+                logger.warning("Insufficient rate limit - skipping run")
+                return
+        except Exception as e:
+            logger.error(f"Rate limit check failed: {str(e)}")
+
+        # Process feeds
         with open('sources.txt') as f:
             sources = [s.strip() for s in f if s.strip()]
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             results = executor.map(self._process_feed, sources)
             all_entries = [entry for feed in results for entry in feed]
 
-        # Post all breaking news
+        # Post updates
         new_posts = 0
         for entry in all_entries:
+            if new_posts >= self.max_posts:
+                break
             if self.post_update(entry):
                 new_posts += 1
 
@@ -140,5 +163,12 @@ class AIXBot:
         logger.info("=== AI X BOT COMPLETED ===")
 
 if __name__ == "__main__":
-    bot = AIXBot()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--max-posts", type=int, default=MAX_POSTS,
+                       help=f"Maximum posts per run (default: {MAX_POSTS})")
+    parser.add_argument("--min-delay", type=int, default=MIN_DELAY,
+                       help=f"Minimum delay between posts in seconds (default: {MIN_DELAY})")
+    args = parser.parse_args()
+
+    bot = AIXBot(max_posts=args.max_posts, min_delay=args.min_delay)
     bot.run()
