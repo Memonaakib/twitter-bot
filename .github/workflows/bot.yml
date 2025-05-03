@@ -1,4 +1,4 @@
-name: Twitter Bot
+name: AI X Bot
 
 on:
   schedule:
@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  tweet:
+  execute:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
     - uses: actions/checkout@v4
@@ -29,17 +29,17 @@ jobs:
         pip install lxml==4.9.3 lxml-html-clean==0.1.1
         pip install -r requirements.txt
 
-    - name: Initialize NLTK Data
+    - name: Initialize NLTK
       run: |
         mkdir -p /home/runner/nltk_data
-        python -c "import nltk; nltk.download('punkt', download_dir='/home/runner/nltk_data')"
         python -c "import nltk; nltk.download('stopwords', download_dir='/home/runner/nltk_data')"
 
-    - name: Run Twitter Bot
+    - name: Run AI X Bot
       env:
+        BEARER_TOKEN: ${{ secrets.BEARER_TOKEN }}
         API_KEY: ${{ secrets.API_KEY }}
         API_SECRET: ${{ secrets.API_SECRET }}
         ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
         ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
       run: |
-        python tweet_bot.py --max-posts 1
+        python tweet_bot.py --max-posts 1 --min-delay 300
