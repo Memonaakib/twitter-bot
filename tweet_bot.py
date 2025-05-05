@@ -4,7 +4,6 @@ import time
 import json
 import hashlib
 import logging
-import random
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,18 +12,19 @@ import feedparser
 from newspaper import Article
 import nltk
 
-# ─── Configuration ─────────────────────────────────────────────────────────────
+# ─── Configuration ──────────────────────────────────────────────
 NLTK_DATA_PATH = "/home/runner/nltk_data"
 HISTORY_FILE = "usage.json"
 COUNTRIES = ['India', 'Pakistan', 'US', 'Gaza', 'Israel', 'China']
-BREAKING_KEYWORDS = ['breaking', 'urgent', 'crisis', 'attack', 'summit', 'deadly']
-MAX_POSTS = 1
-POST_INTERVAL = 3600  # 1 hour
+BREAKING_KEYWORDS = [
+    'breaking', 'urgent', 'crisis', 'attack', 'summit', 'deadly', 'neet', 'cbse',
+    'exam', 'results', 'modi', 'bjp', 'election', 'vote', 'gaza', 'israel', 'tariff',
+    'blast', 'shooting', 'strike', 'trump', 'white house'
+]
+MAX_POSTS = 3
+POST_INTERVAL = 30  # seconds for testing
 
-nltk.data.path.insert(0, NLTK_DATA_PATH)
-from nltk.corpus import stopwords
-
-# ─── Logging ───────────────────────────────────────────────────────────────────
+# ─── Logging Setup ──────────────────────────────────────────────
 logging.basicConfig(
     format="%(asctime)s - AI X BOT - %(levelname)s - %(message)s",
     level=logging.INFO,
@@ -51,7 +51,6 @@ class AIXBot:
             nltk.data.find('corpora/stopwords')
         except LookupError:
             nltk.download('stopwords', download_dir=NLTK_DATA_PATH, quiet=True)
-        self.stop_words = set(stopwords.words('english'))
 
     def _load_history(self):
         try:
@@ -62,29 +61,30 @@ class AIXBot:
 
     def _is_breaking_news(self, title: str) -> bool:
         title_lower = title.lower()
-        country_check = any(c.lower() in title_lower for c in COUNTRIES)
-        keyword_check = any(kw in title_lower for kw in BREAKING_KEYWORDS)
-        return country_check or keyword_check  # Loosened to OR
+        matched = []
+
+        for word in COUNTRIES + BREAKING_KEYWORDS:
+            if word.lower() in title_lower:
+                matched.append(word.lower())
+
+        if matched:
+            logger.info(f"Matched keywords in title: {matched}")
+            return True
+        return False
 
     def _process_feed(self, url: str):
         try:
             feed = feedparser.parse(url)
-            result = []
-            for entry in feed.entries[:10]:
-                if self._is_breaking_news(entry.title):
-                    result.append(entry)
-                else:
-                    logger.info(f"SKIPPED: {entry.title}")
-            return result[:1]
+            return [
+                entry for entry in feed.entries[:10]
+                if self._is_breaking_news(entry.title)
+            ][:2]
         except Exception as e:
             logger.error(f"Feed error: {str(e)}")
             return []
 
     def _create_tweet(self, entry) -> str:
-        emojis = ["🚨", "⚠️", "‼️", "🔥", "🧨"]
-        taglines = ["BREAKING", "UPDATE", "NEWS ALERT"]
-        prefix = f"{random.choice(emojis)} {random.choice(taglines)}:"
-        return f"{prefix} {entry.title}\n🔗 {entry.link}"
+        return f"🚨 BREAKING: {entry.title}\n🔗 {entry.link}"
 
     def _can_post(self):
         time_since_last = time.time() - self.last_post_time
@@ -99,7 +99,7 @@ class AIXBot:
 
         content_hash = hashlib.md5(entry.title.encode()).hexdigest()
         if content_hash in self.history['posts']:
-            logger.info(f"Skipping duplicate: {entry.title[:60]}...")
+            logger.info(f"SKIPPED: Already posted: {entry.title[:60]}...")
             return False
 
         try:
@@ -116,7 +116,6 @@ class AIXBot:
 
     def run(self):
         logger.info("=== AI X BOT STARTED ===")
-
         with open('sources.txt') as f:
             sources = [s.strip() for s in f if s.strip()]
 
