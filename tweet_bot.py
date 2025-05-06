@@ -1,88 +1,56 @@
-import feedparser
 import json
-import time
-from datetime import datetime
-from collections import Counter
-import hashlib
 import os
+import time
+import requests
+from bs4 import BeautifulSoup
+from tweet_bot import AIXBot  # Make sure tweet_bot.py is in same directory
 
-from tweet_bot import AIXBot  # Make sure your main class is imported
+USED_KEYWORDS_FILE = "keywords.json"
+MAX_POSTS_PER_DAY = 18
 
-# Settings
-RSS_FEEDS = [
-    "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
-    "https://www.reddit.com/r/worldnews/.rss"
-]
-MAX_DAILY_POSTS = 18
-TREND_THRESHOLD = 3  # Minimum keyword frequency to be considered trending
-KEYWORDS_TO_TRACK = ['india', 'israel', 'gaza', 'modi', 'bjp', 'neet', 'china', 'iran', 'elon', 'crisis']
+def load_used_keywords():
+    if os.path.exists(USED_KEYWORDS_FILE):
+        with open(USED_KEYWORDS_FILE, 'r') as file:
+            return json.load(file)
+    return []
 
-HISTORY_FILE = "usage.json"
+def save_used_keywords(keywords):
+    with open(USED_KEYWORDS_FILE, 'w') as file:
+        json.dump(keywords[-100:], file)  # keep last 100 entries
 
-def load_history():
-    try:
-        with open(HISTORY_FILE, 'r') as f:
-            return json.load(f)
-    except:
-        return {'posts': {}, 'count': 0, 'date': datetime.now().strftime('%Y-%m-%d')}
+def fetch_trending_topics():
+    url = "https://news.google.com/home?hl=en-IN&gl=IN&ceid=IN:en"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.content, "html.parser")
+    
+    topics = []
+    for item in soup.find_all("a", attrs={"class": "DY5T1d RZIKme"}):
+        text = item.get_text().strip()
+        if text:
+            topics.append(text)
+    return list(set(topics))[:25]  # Deduplicate and limit
 
-def save_history(history):
-    with open(HISTORY_FILE, 'w') as f:
-        json.dump(history, f, indent=2)
-
-def reset_daily_counter_if_needed(history):
-    today = datetime.now().strftime('%Y-%m-%d')
-    if history.get("date") != today:
-        history['count'] = 0
-        history['posts'] = {}
-        history['date'] = today
-    return history
-
-def extract_keywords(title):
-    words = [word.lower() for word in title.split() if len(word) > 3]
-    return [word for word in words if word in KEYWORDS_TO_TRACK]
-
-def fetch_articles():
-    entries = []
-    for url in RSS_FEEDS:
-        feed = feedparser.parse(url)
-        entries.extend(feed.entries[:10])
-    return entries
-
-def detect_trending_keywords(entries):
-    all_keywords = []
-    for entry in entries:
-        all_keywords += extract_keywords(entry.title)
-    keyword_counts = Counter(all_keywords)
-    trending = [kw for kw, count in keyword_counts.items() if count >= TREND_THRESHOLD]
-    return trending
-
-def run_trend_bot():
-    history = load_history()
-    history = reset_daily_counter_if_needed(history)
-
-    if history['count'] >= MAX_DAILY_POSTS:
-        print("Daily post limit reached.")
-        return
-
-    entries = fetch_articles()
-    trending_keywords = detect_trending_keywords(entries)
-    print(f"Trending keywords: {trending_keywords}")
-
+def main():
+    used_keywords = load_used_keywords()
+    topics = fetch_trending_topics()
+    
     bot = AIXBot()
-    for entry in entries:
-        keywords = extract_keywords(entry.title)
-        if any(kw in trending_keywords for kw in keywords):
-            content_hash = hashlib.md5(entry.title.encode()).hexdigest()
-            if content_hash in history['posts']:
-                continue
-            if bot.post_update(entry):
-                history['posts'][content_hash] = datetime.now().isoformat()
-                history['count'] += 1
-                save_history(history)
-                time.sleep(2)  # Small gap
-            if history['count'] >= MAX_DAILY_POSTS:
+    count = 0
+
+    for topic in topics:
+        if topic in used_keywords:
+            continue
+
+        success = bot.post_tweet(f"Trending: {topic}")
+        if success:
+            used_keywords.append(topic)
+            save_used_keywords(used_keywords)
+            count += 1
+            print(f"Posted: {topic}")
+            if count >= MAX_POSTS_PER_DAY:
                 break
+            time.sleep(1800)  # 30 mins pause between posts (optional)
 
 if __name__ == "__main__":
-    run_trend_bot()
+    main()
