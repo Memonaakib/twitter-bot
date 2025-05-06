@@ -36,4 +36,4 @@ jobs:
         ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
         ACCESS_SECRET: ${{ secrets.ACCESS_SECRET }}
       run: |
-        python tweet_bot.py
+        python trend_bot.py
