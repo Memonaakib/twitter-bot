@@ -1,4 +1,13 @@
-https://www.reutersagency.com/feed/?best-regions=asia&post_type=best
 https://www.livemint.com/rss/news
+https://www.reutersagency.com/feed/?best-regions=asia&post_type=best
 https://www.reuters.com/arc/outboundfeeds/rss/?outputType=collection&id=POLITICS
 https://www.reuters.com/arc/outboundfeeds/rss/?outputType=collection&id=CONFLICT
+https://www.indiatoday.in/rss/home
+https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms
+https://feeds.bbci.co.uk/news/rss.xml
+https://www.aljazeera.com/xml/rss/all.xml
+https://rss.cnn.com/rss/edition.rss
+https://www.npr.org/rss/rss.php?id=1001
+https://www.thehindu.com/news/national/feeder/default.rss
+https://feeds.a.dj.com/rss/RSSWorldNews.xml
+https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml
