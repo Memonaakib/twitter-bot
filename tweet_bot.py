@@ -1,142 +1,88 @@
-#!/usr/bin/env python3
-import os
-import time
-import json
-import hashlib
-import logging
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
-
-import tweepy
 import feedparser
-from newspaper import Article
-import nltk
+import json
+import time
+from datetime import datetime
+from collections import Counter
+import hashlib
+import os
 
-# ─── Configuration ──────────────────────────────────────────────
-NLTK_DATA_PATH = "/home/runner/nltk_data"
-HISTORY_FILE = "usage.json"
-COUNTRIES = ['India', 'Pakistan', 'US', 'Gaza', 'Israel', 'China']
-BREAKING_KEYWORDS = [
-    'breaking', 'urgent', 'crisis', 'attack', 'summit', 'deadly', 'neet', 'cbse',
-    'exam', 'results', 'modi', 'bjp', 'election', 'vote', 'gaza', 'israel', 'tariff',
-    'blast', 'shooting', 'strike', 'trump', 'white house'
+from tweet_bot import AIXBot  # Make sure your main class is imported
+
+# Settings
+RSS_FEEDS = [
+    "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
+    "https://www.reddit.com/r/worldnews/.rss"
 ]
-MAX_POSTS = 3
-POST_INTERVAL = 30  # seconds for testing
+MAX_DAILY_POSTS = 18
+TREND_THRESHOLD = 3  # Minimum keyword frequency to be considered trending
+KEYWORDS_TO_TRACK = ['india', 'israel', 'gaza', 'modi', 'bjp', 'neet', 'china', 'iran', 'elon', 'crisis']
 
-# ─── Logging Setup ──────────────────────────────────────────────
-logging.basicConfig(
-    format="%(asctime)s - AI X BOT - %(levelname)s - %(message)s",
-    level=logging.INFO,
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
-logger = logging.getLogger("AI_X_Bot")
+HISTORY_FILE = "usage.json"
 
-class AIXBot:
-    def __init__(self):
-        self.client = tweepy.Client(
-            bearer_token=os.getenv("BEARER_TOKEN"),
-            consumer_key=os.getenv("API_KEY"),
-            consumer_secret=os.getenv("API_SECRET"),
-            access_token=os.getenv("ACCESS_TOKEN"),
-            access_token_secret=os.getenv("ACCESS_SECRET"),
-            wait_on_rate_limit=True
-        )
-        self._init_nltk()
-        self.history = self._load_history()
-        self.last_post_time = 0
+def load_history():
+    try:
+        with open(HISTORY_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return {'posts': {}, 'count': 0, 'date': datetime.now().strftime('%Y-%m-%d')}
 
-    def _init_nltk(self):
-        try:
-            nltk.data.find('corpora/stopwords')
-        except LookupError:
-            nltk.download('stopwords', download_dir=NLTK_DATA_PATH, quiet=True)
+def save_history(history):
+    with open(HISTORY_FILE, 'w') as f:
+        json.dump(history, f, indent=2)
 
-    def _load_history(self):
-        try:
-            with open(HISTORY_FILE, 'r') as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {'posts': {}, 'count': 0}
+def reset_daily_counter_if_needed(history):
+    today = datetime.now().strftime('%Y-%m-%d')
+    if history.get("date") != today:
+        history['count'] = 0
+        history['posts'] = {}
+        history['date'] = today
+    return history
 
-    def _is_breaking_news(self, title: str) -> bool:
-        title_lower = title.lower()
-        matched = []
+def extract_keywords(title):
+    words = [word.lower() for word in title.split() if len(word) > 3]
+    return [word for word in words if word in KEYWORDS_TO_TRACK]
 
-        for word in COUNTRIES + BREAKING_KEYWORDS:
-            if word.lower() in title_lower:
-                matched.append(word.lower())
+def fetch_articles():
+    entries = []
+    for url in RSS_FEEDS:
+        feed = feedparser.parse(url)
+        entries.extend(feed.entries[:10])
+    return entries
 
-        if matched:
-            logger.info(f"Matched keywords in title: {matched}")
-            return True
-        return False
+def detect_trending_keywords(entries):
+    all_keywords = []
+    for entry in entries:
+        all_keywords += extract_keywords(entry.title)
+    keyword_counts = Counter(all_keywords)
+    trending = [kw for kw, count in keyword_counts.items() if count >= TREND_THRESHOLD]
+    return trending
 
-    def _process_feed(self, url: str):
-        try:
-            feed = feedparser.parse(url)
-            return [
-                entry for entry in feed.entries[:10]
-                if self._is_breaking_news(entry.title)
-            ][:2]
-        except Exception as e:
-            logger.error(f"Feed error: {str(e)}")
-            return []
+def run_trend_bot():
+    history = load_history()
+    history = reset_daily_counter_if_needed(history)
 
-    def _create_tweet(self, entry) -> str:
-        return f"🚨 BREAKING: {entry.title}\n🔗 {entry.link}"
+    if history['count'] >= MAX_DAILY_POSTS:
+        print("Daily post limit reached.")
+        return
 
-    def _can_post(self):
-        time_since_last = time.time() - self.last_post_time
-        if time_since_last < POST_INTERVAL:
-            logger.warning(f"Too soon to post. Wait {POST_INTERVAL - time_since_last:.0f}s")
-            return False
-        return True
+    entries = fetch_articles()
+    trending_keywords = detect_trending_keywords(entries)
+    print(f"Trending keywords: {trending_keywords}")
 
-    def post_update(self, entry):
-        if not self._can_post():
-            return False
-
-        content_hash = hashlib.md5(entry.title.encode()).hexdigest()
-        if content_hash in self.history['posts']:
-            logger.info(f"SKIPPED: Already posted: {entry.title[:60]}...")
-            return False
-
-        try:
-            tweet = self._create_tweet(entry)
-            self.client.create_tweet(text=tweet)
-            self.history['posts'][content_hash] = datetime.now().isoformat()
-            self.history['count'] += 1
-            self.last_post_time = time.time()
-            logger.info(f"Posted: {entry.title[:80]}...")
-            return True
-        except tweepy.TweepyException as e:
-            logger.error(f"Twitter error: {str(e)}")
-            return False
-
-    def run(self):
-        logger.info("=== AI X BOT STARTED ===")
-        with open('sources.txt') as f:
-            sources = [s.strip() for s in f if s.strip()]
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            results = executor.map(self._process_feed, sources)
-            all_entries = [entry for feed in results for entry in feed]
-
-        new_posts = 0
-        for entry in all_entries:
-            if new_posts >= MAX_POSTS:
+    bot = AIXBot()
+    for entry in entries:
+        keywords = extract_keywords(entry.title)
+        if any(kw in trending_keywords for kw in keywords):
+            content_hash = hashlib.md5(entry.title.encode()).hexdigest()
+            if content_hash in history['posts']:
+                continue
+            if bot.post_update(entry):
+                history['posts'][content_hash] = datetime.now().isoformat()
+                history['count'] += 1
+                save_history(history)
+                time.sleep(2)  # Small gap
+            if history['count'] >= MAX_DAILY_POSTS:
                 break
-            if self.post_update(entry):
-                new_posts += 1
-                time.sleep(POST_INTERVAL)
-
-        with open(HISTORY_FILE, 'w') as f:
-            json.dump(self.history, f, indent=2)
-
-        logger.info(f"Total posts: {self.history['count']}")
-        logger.info("=== AI X BOT COMPLETED ===")
 
 if __name__ == "__main__":
-    bot = AIXBot()
-    bot.run()
+    run_trend_bot()
