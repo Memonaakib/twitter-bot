@@ -1,30 +1,29 @@
 import json
-import openai
 import tweepy
 import time
 import logging
 import feedparser
-from newspaper import Article
 import os
 
-# Twitter API keys
-import os
-
+# Twitter API keys from environment
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 ACCESS_SECRET = os.getenv("ACCESS_SECRET")
 
-
-# OpenAI key
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# Sources
+# RSS feeds from top news sources
 RSS_FEEDS = [
     'https://www.livemint.com/rss/news',
-    'https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best'
+    'https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best',
+    'https://www.indiatoday.in/rss/home',
+    'https://www.ndtv.com/rss',
+    'https://www.moneycontrol.com/rss/latestnews.xml'
 ]
 
+# Tweet log file
+TWEET_LOG_FILE = "tweet_log.json"
+
+# Logging setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - AI X BOT - %(levelname)s - %(message)s')
 
 def fetch_articles():
@@ -33,79 +32,53 @@ def fetch_articles():
         feed = feedparser.parse(url)
         for entry in feed.entries:
             articles.append({"title": entry.title, "link": entry.link})
-    return articles  # Return the first relevant article
-    return None
+    return articles
 
+def format_tweet(title, link):
+    return f"** {title.strip()} **\n\nRead more: {link}"
 
-def summarize_article(url):
-    try:
-        article = Article(url)
-        article.download()
-        article.parse()
-        article_text = article.text[:4000]
-
-        # Use GPT-4 to summarize
-        response = openai.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "Summarize the article as a viral tweet under 280 characters."},
-                {"role": "user", "content": article_text}
-            ]
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        logging.error(f"Summarization failed: {e}")
-        return None
-
+def decorate_tweet(tweet):
+    return f"🔥 {tweet} 🔗"
 
 def post_tweet(tweet):
     try:
-        auth = tweepy.OAuth1UserHandler(
-            TWITTER_API_KEY, TWITTER_API_SECRET,
-            TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET
-        )
+        auth = tweepy.OAuth1UserHandler(API_KEY, API_SECRET, ACCESS_TOKEN, ACCESS_SECRET)
         api = tweepy.API(auth)
         api.update_status(tweet)
         logging.info(f"Posted: {tweet}")
     except tweepy.errors.Forbidden:
-        logging.error("Twitter error: 403 Forbidden - Duplicate content")
+        logging.warning("Twitter error: 403 Forbidden - Possibly duplicate content")
     except Exception as e:
         logging.error(f"Tweet post failed: {e}")
-
-
-TWEET_LOG_FILE = "tweet_log.json"
 
 def has_already_posted(title):
     if not os.path.exists(TWEET_LOG_FILE):
         return False
     with open(TWEET_LOG_FILE, 'r') as f:
-        logged = json.load(f)
-    return title in logged
-
+        posted_titles = json.load(f)
+    return title in posted_titles
 
 def log_posted_article(title):
     if os.path.exists(TWEET_LOG_FILE):
         with open(TWEET_LOG_FILE, 'r') as f:
-            logged = json.load(f)
+            posted_titles = json.load(f)
     else:
-        logged = []
-    logged.append(title)
+        posted_titles = []
+    posted_titles.append(title)
     with open(TWEET_LOG_FILE, 'w') as f:
-        json.dump(logged, f)
-
+        json.dump(posted_titles, f)
 
 def main():
     articles = fetch_articles()
     for article in articles:
-        if any(keyword in article['title'].lower() for keyword in trending_keywords):
-            if has_already_posted(article['title']):
-                continue
-            summary = summarize_article(article['link'])
-            if summary:
-                post_tweet(summary)
-                log_posted_article(article['title'])
+        title = article['title']
+        link = article['link']
+        if not has_already_posted(title):
+            tweet = decorate_tweet(format_tweet(title, link))
+            if len(tweet) <= 280:
+                post_tweet(tweet)
+                log_posted_article(title)
                 break
-
 
 if __name__ == '__main__':
     main()
