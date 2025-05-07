@@ -3,8 +3,10 @@ import json
 from datetime import datetime
 import feedparser
 
+RSS_FEED = 'https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en'
+
 def extract_trending_topics():
-    feed = feedparser.parse("https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en")
+    feed = feedparser.parse(RSS_FEED)
     headlines = [entry.title for entry in feed.entries[:10]]
     return headlines
 
