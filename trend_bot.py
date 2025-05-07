@@ -1,22 +1,56 @@
+import json
+import os
+import time
+import requests
+from bs4 import BeautifulSoup
+from tweet_bot import AIXBot  # Make sure tweet_bot.py is in same directory
 
-import requests 
-import json from bs4 
-import BeautifulSoup from datetime 
-import datetime
+USED_KEYWORDS_FILE = "keywords.json"
+MAX_POSTS_PER_DAY = 18
 
-TRENDING_URLS = [ "https://www.livemint.com/", "https://www.reuters.com/world/" ]
+def load_used_keywords():
+    if os.path.exists(USED_KEYWORDS_FILE):
+        with open(USED_KEYWORDS_FILE, 'r') as file:
+            return json.load(file)
+    return []
 
-HEADERS = {'User-Agent': 'Mozilla/5.0'}
+def save_used_keywords(keywords):
+    with open(USED_KEYWORDS_FILE, 'w') as file:
+        json.dump(keywords[-100:], file)  # keep last 100 entries
 
-def fetch_headlines(): headlines = [] for url in TRENDING_URLS: res = requests.get(url, headers=HEADERS) soup = BeautifulSoup(res.content, 'html.parser') if "livemint" in url: titles = soup.select('h2') elif "reuters" in url: titles = soup.select('h3')
+def fetch_trending_topics():
+    url = "https://news.google.com/home?hl=en-IN&gl=IN&ceid=IN:en"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers)
+    soup = BeautifulSoup(response.content, "html.parser")
+    
+    topics = []
+    for item in soup.find_all("a", attrs={"class": "DY5T1d RZIKme"}):
+        text = item.get_text().strip()
+        if text:
+            topics.append(text)
+    return list(set(topics))[:25]  # Deduplicate and limit
 
-for t in titles:
-        title = t.get_text(strip=True)
-        if len(title) > 30:
-            headlines.append(title)
-return list(set(headlines))
+def main():
+    used_keywords = load_used_keywords()
+    topics = fetch_trending_topics()
+    
+    bot = AIXBot()
+    count = 0
 
-def save_trends(headlines): timestamp = datetime.utcnow().isoformat() trending_data = [{"title": h, "timestamp": timestamp} for h in headlines] with open("trending.json", "w") as f: json.dump(trending_data, f, indent=2)
+    for topic in topics:
+        if topic in used_keywords:
+            continue
 
-if name == "main": headlines = fetch_headlines() save_trends(headlines) print(f"Saved {len(headlines)} headlines to trending.json")
+        success = bot.post_tweet(f"Trending: {topic}")
+        if success:
+            used_keywords.append(topic)
+            save_used_keywords(used_keywords)
+            count += 1
+            print(f"Posted: {topic}")
+            if count >= MAX_POSTS_PER_DAY:
+                break
+            time.sleep(1800)  # 30 mins pause between posts (optional)
 
+if __name__ == "__main__":
+    main()
