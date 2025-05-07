@@ -95,7 +95,6 @@ def log_posted_article(title):
 
 
 def main():
-    trending_keywords = load_trending_keywords()
     articles = fetch_articles()
     for article in articles:
         if any(keyword in article['title'].lower() for keyword in trending_keywords):
