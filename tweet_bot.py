@@ -27,13 +27,6 @@ RSS_FEEDS = [
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - AI X BOT - %(levelname)s - %(message)s')
 
-
-def load_trending_keywords():
-    with open('trending.json') as f:
-        data = json.load(f)
-    return [entry['topic'].lower() for entry in data]
-
-
 def fetch_articles():
     articles = []
     for url in RSS_FEEDS:
