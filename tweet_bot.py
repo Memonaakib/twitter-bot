@@ -33,14 +33,7 @@ def fetch_articles():
         feed = feedparser.parse(url)
         for entry in feed.entries:
             articles.append({"title": entry.title, "link": entry.link})
-    return articles
-
-
-def find_best_article(trending_keywords, articles):
-    for keyword in trending_keywords:
-        for article in articles:
-            if keyword in article['title'].lower():
-                return article  # Return the first relevant article
+    return articles  # Return the first relevant article
     return None
 
 
