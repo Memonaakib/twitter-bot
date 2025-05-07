@@ -1,151 +1,123 @@
-#!/usr/bin/env python3
-import os
-import time
 import json
-import hashlib
-import logging
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
-
+import openai
 import tweepy
+import time
+import logging
 import feedparser
 from newspaper import Article
-import nltk
+import os
 
-# ─── Configuration ──────────────────────────────────────────────
-NLTK_DATA_PATH = "/home/runner/nltk_data"
-HISTORY_FILE = "usage.json"
-TRENDS_FILE = "trends.json"
-COUNTRIES = ['India', 'Pakistan', 'US', 'Gaza', 'Israel', 'China']
-BREAKING_KEYWORDS = [
-    'breaking', 'urgent', 'crisis', 'attack', 'summit', 'deadly', 'neet', 'cbse',
-    'exam', 'results', 'modi', 'bjp', 'election', 'vote', 'gaza', 'israel', 'tariff',
-    'blast', 'shooting', 'strike', 'trump', 'white house'
+# Twitter API keys
+TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
+TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
+TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
+TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
+
+# OpenAI key
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Sources
+RSS_FEEDS = [
+    'https://www.livemint.com/rss/news',
+    'https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best'
 ]
-MAX_POSTS = 3
-POST_INTERVAL = 30  # seconds between posts
 
-# ─── Logging Setup ──────────────────────────────────────────────
-logging.basicConfig(
-    format="%(asctime)s - AI X BOT - %(levelname)s - %(message)s",
-    level=logging.INFO,
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
-logger = logging.getLogger("AI_X_Bot")
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - AI X BOT - %(levelname)s - %(message)s')
 
-class AIXBot:
-    def __init__(self):
-        self.client = tweepy.Client(
-            bearer_token=os.getenv("BEARER_TOKEN"),
-            consumer_key=os.getenv("API_KEY"),
-            consumer_secret=os.getenv("API_SECRET"),
-            access_token=os.getenv("ACCESS_TOKEN"),
-            access_token_secret=os.getenv("ACCESS_SECRET"),
-            wait_on_rate_limit=True
+
+def load_trending_keywords():
+    with open('trending.json') as f:
+        data = json.load(f)
+    return [entry['topic'].lower() for entry in data]
+
+
+def fetch_articles():
+    articles = []
+    for url in RSS_FEEDS:
+        feed = feedparser.parse(url)
+        for entry in feed.entries:
+            articles.append({"title": entry.title, "link": entry.link})
+    return articles
+
+
+def find_best_article(trending_keywords, articles):
+    for keyword in trending_keywords:
+        for article in articles:
+            if keyword in article['title'].lower():
+                return article  # Return the first relevant article
+    return None
+
+
+def summarize_article(url):
+    try:
+        article = Article(url)
+        article.download()
+        article.parse()
+        article_text = article.text[:4000]
+
+        # Use GPT-4 to summarize
+        response = openai.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "Summarize the article as a viral tweet under 280 characters."},
+                {"role": "user", "content": article_text}
+            ]
         )
-        self._init_nltk()
-        self.history = self._load_history()
-        self.trends = self._load_trends()
-        self.last_post_time = 0
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logging.error(f"Summarization failed: {e}")
+        return None
 
-    def _init_nltk(self):
-        try:
-            nltk.data.find('corpora/stopwords')
-        except LookupError:
-            nltk.download('stopwords', download_dir=NLTK_DATA_PATH, quiet=True)
 
-    def _load_history(self):
-        try:
-            with open(HISTORY_FILE, 'r') as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {'posts': {}, 'count': 0}
+def post_tweet(tweet):
+    try:
+        auth = tweepy.OAuth1UserHandler(
+            TWITTER_API_KEY, TWITTER_API_SECRET,
+            TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET
+        )
+        api = tweepy.API(auth)
+        api.update_status(tweet)
+        logging.info(f"Posted: {tweet}")
+    except tweepy.errors.Forbidden:
+        logging.error("Twitter error: 403 Forbidden - Duplicate content")
+    except Exception as e:
+        logging.error(f"Tweet post failed: {e}")
 
-    def _load_trends(self):
-        try:
-            with open(TRENDS_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return []
 
-    def _is_breaking_news(self, title: str) -> bool:
-        title_lower = title.lower()
-        matched = []
+TWEET_LOG_FILE = "tweet_log.json"
 
-        for word in COUNTRIES + BREAKING_KEYWORDS + self.trends:
-            if word.lower() in title_lower:
-                matched.append(word.lower())
-
-        if matched:
-            logger.info(f"Matched keywords in title: {matched}")
-            return True
+def has_already_posted(title):
+    if not os.path.exists(TWEET_LOG_FILE):
         return False
+    with open(TWEET_LOG_FILE, 'r') as f:
+        logged = json.load(f)
+    return title in logged
 
-    def _process_feed(self, url: str):
-        try:
-            feed = feedparser.parse(url)
-            return [
-                entry for entry in feed.entries[:10]
-                if self._is_breaking_news(entry.title)
-            ][:2]
-        except Exception as e:
-            logger.error(f"Feed error: {str(e)}")
-            return []
 
-    def _create_tweet(self, entry) -> str:
-        return f"🚨 BREAKING: {entry.title}\n🔗 {entry.link}"
+def log_posted_article(title):
+    if os.path.exists(TWEET_LOG_FILE):
+        with open(TWEET_LOG_FILE, 'r') as f:
+            logged = json.load(f)
+    else:
+        logged = []
+    logged.append(title)
+    with open(TWEET_LOG_FILE, 'w') as f:
+        json.dump(logged, f)
 
-    def _can_post(self):
-        time_since_last = time.time() - self.last_post_time
-        if time_since_last < POST_INTERVAL:
-            logger.warning(f"Too soon to post. Wait {POST_INTERVAL - time_since_last:.0f}s")
-            return False
-        return True
 
-    def post_update(self, entry):
-        if not self._can_post():
-            return False
-
-        content_hash = hashlib.md5(entry.title.encode()).hexdigest()
-        if content_hash in self.history['posts']:
-            logger.info(f"SKIPPED: Already posted: {entry.title[:60]}...")
-            return False
-
-        try:
-            tweet = self._create_tweet(entry)
-            self.client.create_tweet(text=tweet)
-            self.history['posts'][content_hash] = datetime.now().isoformat()
-            self.history['count'] += 1
-            self.last_post_time = time.time()
-            logger.info(f"Posted: {entry.title[:80]}...")
-            return True
-        except tweepy.TweepyException as e:
-            logger.error(f"Twitter error: {str(e)}")
-            return False
-
-    def run(self):
-        logger.info("=== AI X BOT STARTED ===")
-        with open('sources.txt') as f:
-            sources = [s.strip() for s in f if s.strip()]
-
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            results = executor.map(self._process_feed, sources)
-            all_entries = [entry for feed in results for entry in feed]
-
-        new_posts = 0
-        for entry in all_entries:
-            if new_posts >= MAX_POSTS:
+def main():
+    trending_keywords = load_trending_keywords()
+    articles = fetch_articles()
+    for article in articles:
+        if any(keyword in article['title'].lower() for keyword in trending_keywords):
+            if has_already_posted(article['title']):
+                continue
+            summary = summarize_article(article['link'])
+            if summary:
+                post_tweet(summary)
+                log_posted_article(article['title'])
                 break
-            if self.post_update(entry):
-                new_posts += 1
-                time.sleep(POST_INTERVAL)
 
-        with open(HISTORY_FILE, 'w') as f:
-            json.dump(self.history, f, indent=2)
 
-        logger.info(f"Total posts: {self.history['count']}")
-        logger.info("=== AI X BOT COMPLETED ===")
-
-if __name__ == "__main__":
-    bot = AIXBot()
-    bot.run()
+if __name__ == '__main__':
+    main()
