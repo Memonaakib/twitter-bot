@@ -45,7 +45,8 @@ def fetch_articles_grouped():
             key = clean_title(entry.title)
             article_map[key].append({
                 "title": entry.title,
-                "link": entry.link
+                "link": entry.link,
+                "content": entry.summary  # Capture the content of the article
             })
     return article_map
 
@@ -66,34 +67,42 @@ def log_posted_article(title):
     with open(TWEET_LOG_FILE, 'w') as f:
         json.dump(posted_titles, f)
 
-def format_tweet(article):
-    styles = [
-        f"🚨 WAR ALERT 🚨\n\n{article['title']}\n\nRead more: {article['link']}",
-        f"{article['title']} 🇮🇳⚔️🇵🇰\n\nDetails: {article['link']}\n\n#India #Pakistan #BreakingNews"
+def post_random_engagement():
+    # Predefined random engagement posts like jokes, quotes, and questions
+    posts = [
+        "Why don't skeletons fight each other? They don't have the guts! 😂",
+        "Here's a motivational quote: 'Success is not final, failure is not fatal: It is the courage to continue that counts.' – Winston Churchill",
+        "Quiz time! What’s the capital of France? 🇫🇷",
+        "If you could have dinner with any historical figure, who would it be and why? 🤔",
+        "Life’s too short to waste time. What’s one thing you’d love to do more of this year? ✨"
     ]
-    return random.choice(styles)
-
-def post_tweet(tweet):
+    tweet = random.choice(posts)
     try:
         client.create_tweet(text=tweet)
-        logging.info(f"Tweet posted: {tweet}")
-    except tweepy.errors.Forbidden as e:
-        logging.warning(f"Twitter error: 403 Forbidden - Possibly duplicate or blocked content - {e}")
+        logging.info(f"Engagement post posted: {tweet}")
     except Exception as e:
-        logging.error(f"Tweet post failed: {e}")
+        logging.error(f"Post failed: {e}")
 
 def main():
     grouped_articles = fetch_articles_grouped()
 
+    # Check if there are articles to post
     for group in grouped_articles.values():
         if len(group) >= 2:  # At least 2 sources have the same story
             article = group[0]  # Pick from one of the matching sources
             if has_already_posted(article['title']):
                 continue
-            tweet = format_tweet(article)
-            post_tweet(tweet)
-            log_posted_article(article['title'])
+            tweet = f"🚨 {article['title']} 🚨\n\nRead more: {article['link']}"
+            try:
+                client.create_tweet(text=tweet)
+                log_posted_article(article['title'])
+                logging.info(f"Tweet posted: {tweet}")
+            except Exception as e:
+                logging.error(f"Tweet post failed: {e}")
             break
+    else:
+        # If no article found, post an engaging random post
+        post_random_engagement()
 
 if __name__ == '__main__':
     main()
