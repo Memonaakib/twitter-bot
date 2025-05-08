@@ -3,31 +3,30 @@ import tweepy
 import logging
 import feedparser
 import os
+import random
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - AI X BOT - %(levelname)s - %(message)s')
-
-# Load Twitter API credentials from environment
+# Twitter API v2 credentials from environment
 API_KEY = os.getenv("API_KEY")
 API_SECRET = os.getenv("API_SECRET")
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 ACCESS_SECRET = os.getenv("ACCESS_SECRET")
 
-# Tweepy client for API v2
+# Tweepy Client for Twitter API v2
 client = tweepy.Client(
     consumer_key=API_KEY,
     consumer_secret=API_SECRET,
     access_token=ACCESS_TOKEN,
-    access_token_secret=ACCESS_SECRET,
-    wait_on_rate_limit=True
+    access_token_secret=ACCESS_SECRET
 )
 
-# Trending RSS feeds
+# RSS sources for trending news
 RSS_FEEDS = [
     'https://www.livemint.com/rss/news',
     'https://www.reutersagency.com/feed/?taxonomy=best-sectors&post_type=best',
     'https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en'
 ]
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - AI X BOT - %(levelname)s - %(message)s')
 
 TWEET_LOG_FILE = "tweet_log.json"
 
@@ -37,8 +36,8 @@ def fetch_articles():
         feed = feedparser.parse(url)
         for entry in feed.entries:
             articles.append({
-                "title": entry.title.strip(),
-                "link": entry.link.strip()
+                "title": entry.title,
+                "link": entry.link
             })
     return articles
 
@@ -46,30 +45,32 @@ def has_already_posted(title):
     if not os.path.exists(TWEET_LOG_FILE):
         return False
     with open(TWEET_LOG_FILE, 'r') as f:
-        posted = json.load(f)
-    return title in posted
+        posted_titles = json.load(f)
+    return title in posted_titles
 
 def log_posted_article(title):
     if os.path.exists(TWEET_LOG_FILE):
         with open(TWEET_LOG_FILE, 'r') as f:
-            posted = json.load(f)
+            posted_titles = json.load(f)
     else:
-        posted = []
-    posted.append(title)
+        posted_titles = []
+    posted_titles.append(title)
     with open(TWEET_LOG_FILE, 'w') as f:
-        json.dump(posted, f)
+        json.dump(posted_titles, f)
 
 def format_tweet(article):
-    emojis = ["🔥", "🚨", "⚠️", "📰", "💥"]
-    tweet = f"{emojis[0]} *BREAKING NEWS* {emojis[1]}\n\n{article['title']}\n\nRead more: {article['link']} {emojis[4]}"
-    return tweet
+    styles = [
+        f"🚨 WAR ALERT 🚨\n\n{article['title']}\n\nRead more: {article['link']}",
+        f"{article['title']} 🇮🇳⚔️🇵🇰\n\nDetails: {article['link']}\n\n#India #Pakistan #BreakingNews"
+    ]
+    return random.choice(styles)
 
 def post_tweet(tweet):
     try:
         client.create_tweet(text=tweet)
         logging.info(f"Tweet posted: {tweet}")
     except tweepy.errors.Forbidden as e:
-        logging.warning(f"Twitter error: 403 Forbidden - {e}")
+        logging.warning(f"Twitter error: 403 Forbidden - Possibly duplicate or blocked content - {e}")
     except Exception as e:
         logging.error(f"Tweet post failed: {e}")
 
